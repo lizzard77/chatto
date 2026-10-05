@@ -21,7 +21,12 @@
     LoadingFog,
     PaneHeader
   } from '$lib/ui';
-  import { Button, TextInput } from '$lib/ui/form';
+  import { Button, Checkbox, TextInput } from '$lib/ui/form';
+  import {
+    isEmbeddedSidebarLink,
+    stripSidebarLinkEmbed,
+    withSidebarLinkEmbed
+  } from '$lib/navigation/sidebarLinkEmbed';
   import { toast } from '$lib/ui/toast';
   import { flip } from 'svelte/animate';
   import { dragHandle, dragHandleZone, dndzone, type DndEvent } from 'svelte-dnd-action';
@@ -279,12 +284,14 @@
   let linkGroupId = $state<string | null>(null);
   let linkLabel = $state('');
   let linkUrl = $state('');
+  let linkEmbed = $state(false);
 
   function openCreateLink(group: GroupState) {
     editingLinkId = null;
     linkGroupId = group.id;
     linkLabel = '';
     linkUrl = '';
+    linkEmbed = false;
     linkDialogVisible = true;
   }
 
@@ -292,14 +299,15 @@
     editingLinkId = link.id;
     linkGroupId = null;
     linkLabel = link.label;
-    linkUrl = link.url;
+    linkUrl = stripSidebarLinkEmbed(link.url);
+    linkEmbed = isEmbeddedSidebarLink(link.url);
     linkDialogVisible = true;
   }
 
   async function handleLinkSubmit(e: Event) {
     e.preventDefault();
     const label = linkLabel.trim();
-    const url = linkUrl.trim();
+    const url = withSidebarLinkEmbed(linkUrl.trim(), linkEmbed);
     if (!label || !url) return;
 
     const result = editingLinkId
@@ -548,11 +556,18 @@
                         <div class="flex min-w-0 items-baseline gap-1.5">
                           <span
                             aria-hidden="true"
-                            class="iconify icon-[uil--external-link-alt] text-muted"
+                            class={[
+                              'iconify text-muted',
+                              isEmbeddedSidebarLink(room.link.url)
+                                ? 'icon-[uil--window]'
+                                : 'icon-[uil--external-link-alt]'
+                            ]}
                           ></span>
                           <span class="truncate font-medium">{room.link.label}</span>
                         </div>
-                        <p class="truncate text-sm text-muted">{room.link.url}</p>
+                        <p class="truncate text-sm text-muted">
+                          {stripSidebarLinkEmbed(room.link.url)}
+                        </p>
                       {/if}
                     </div>
                     <div class="flex items-center gap-1.5">
@@ -623,6 +638,12 @@
     label={m('admin.rooms_admin.url')}
     bind:value={linkUrl}
     placeholder={m('admin.rooms_admin.link_url_placeholder')}
+  />
+  <Checkbox
+    id="sidebar-link-embed"
+    label={m('admin.rooms_admin.embed_link')}
+    description={m('admin.rooms_admin.embed_link_description')}
+    bind:checked={linkEmbed}
   />
 </FormDialog>
 

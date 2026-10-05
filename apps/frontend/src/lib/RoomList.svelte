@@ -21,6 +21,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
     sidebarLinkTarget
   } from '$lib/navigation/sidebarLinkTarget';
   import { serverRegistry } from '$lib/client';
+  import {
+    isEmbeddedSidebarLink,
+    stripSidebarLinkEmbed,
+    withSidebarLinkEmbed
+  } from '$lib/navigation/sidebarLinkEmbed';
   import { useServerScope } from '$lib/state/server/scope.svelte';
   import RoomGroupSection from '$lib/components/chat/RoomGroupSection.svelte';
   import CreateRoomGroupControl from '$lib/components/chat/CreateRoomGroupControl.svelte';
@@ -184,6 +189,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
   let editingLinkId = $state<string | null>(null);
   let linkLabel = $state('');
   let linkUrl = $state('');
+  let linkEmbed = $state(false);
   let deleteGroupDialogVisible = $state(false);
   let deleteGroupTarget = $state<RoomsListGroup | null>(null);
   let deleteLinkDialogVisible = $state(false);
@@ -381,6 +387,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
     linkGroupId = group.id;
     linkLabel = '';
     linkUrl = '';
+    linkEmbed = false;
     linkDialogVisible = true;
   }
 
@@ -390,14 +397,15 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
     editingLinkId = item.link.id;
     linkGroupId = null;
     linkLabel = item.link.label;
-    linkUrl = item.link.url;
+    linkUrl = stripSidebarLinkEmbed(item.link.url);
+    linkEmbed = isEmbeddedSidebarLink(item.link.url);
     linkDialogVisible = true;
   }
 
   async function saveLink(event: Event): Promise<void> {
     event.preventDefault();
     const label = linkLabel.trim();
-    const url = normalizeSidebarLinkURL(linkUrl);
+    const url = withSidebarLinkEmbed(normalizeSidebarLinkURL(linkUrl), linkEmbed);
     if (!label || !url) return;
     try {
       if (editingLinkId) {
@@ -1048,11 +1056,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
       {@render navigationRoomLink(room)}
     {/if}
   {:else}
-    {@const target = sidebarLinkTarget(item.link.url, activeServerBaseURL)}
+    {@const embedded = isEmbeddedSidebarLink(item.link.url)}
+    {@const target = sidebarLinkTarget(stripSidebarLinkEmbed(item.link.url), activeServerBaseURL)}
+    {@const isCurrentEmbed = embedded && page.params.linkId === item.link.id}
     {@const owningGroup = groupByItemId.get(item.id)}
     {@const showDragHandle = sidebarDragEnabled && owningGroup?.viewerCanManageGroup}
     <a
-      {...sidebarLinkAnchorAttributes(target)}
+      {...embedded && target.valid
+        ? {
+            href: resolve('/chat/[serverId]/embed/[linkId]', {
+              serverId: serverSegment,
+              linkId: item.link.id
+            })
+          }
+        : sidebarLinkAnchorAttributes(target)}
+      aria-current={isCurrentEmbed ? 'page' : undefined}
       aria-disabled={!target.valid}
       class={[
         'group/link sidebar-item w-full text-start',
@@ -1067,7 +1085,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
         <span
           aria-hidden="true"
           class={[
-            'iconify sidebar-icon icon-[uil--external-link-alt] text-muted transition-opacity feedback-quick',
+            'iconify sidebar-icon text-muted transition-opacity feedback-quick',
+            embedded ? 'icon-[uil--window]' : 'icon-[uil--external-link-alt]',
             showDragHandle ? 'group-focus-within/link:opacity-0 group-hover/link:opacity-0' : ''
           ]}
         ></span>
@@ -1358,7 +1377,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
 {/if}
 
 {#if linkDialogVisible}
-  {#await Promise.all( [import('$lib/ui').then( ({ FormDialog }) => ({ default: FormDialog }) ), import('$lib/ui/form').then( ({ TextInput }) => ({ default: TextInput }) )] ) then [FormDialogModule, TextInputModule]}
+  {#await Promise.all( [import('$lib/ui').then( ({ FormDialog }) => ({ default: FormDialog }) ), import('$lib/ui/form').then( ({ TextInput }) => ({ default: TextInput }) ), import('$lib/ui/form').then( ({ Checkbox }) => ({ default: Checkbox }) )] ) then [FormDialogModule, TextInputModule, CheckboxModule]}
     <FormDialogModule.default
       bind:visible={linkDialogVisible}
       title={editingLinkId ? m('admin.rooms_admin.edit_link') : m('admin.rooms_admin.create_link')}
@@ -1379,6 +1398,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
         label={m('admin.rooms_admin.url')}
         bind:value={linkUrl}
         placeholder={m('admin.rooms_admin.link_url_placeholder')}
+      />
+      <CheckboxModule.default
+        id="sidebar-link-embed"
+        label={m('admin.rooms_admin.embed_link')}
+        description={m('admin.rooms_admin.embed_link_description')}
+        bind:checked={linkEmbed}
       />
     </FormDialogModule.default>
   {/await}

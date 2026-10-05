@@ -321,7 +321,11 @@
         "threading_title": "Thread-Modus",
         "threading_subtitle": "Lege fest, wie Unterhaltungen in diesem Raum Threads verwenden.",
         "threading_help": "Eine Änderung gilt nur für neue Nachrichten. Bestehende Threads bleiben unverändert. „Erforderlich“ passt zu Räumen, in denen jede Nachricht ein eigenes Thema ist, zum Beispiel Support-Anfragen. „Empfohlen“ hält belebte Räume übersichtlich, erzwingt aber keine Threads."
-      }
+      },
+      "embed_link": "In Chatto öffnen",
+      "embed_link_description": "Zeigt die Seite im Chatbereich statt in einem neuen Tab. Die Seite muss Einbetten erlauben.",
+      "embed_open_in_tab": "In neuem Tab öffnen",
+      "embed_not_found": "Link nicht gefunden"
     },
     "security": {
       "title": "Sicherheit",

@@ -321,7 +321,11 @@
         "threading_title": "Threading Mode",
         "threading_subtitle": "Choose how conversations in this room use threads.",
         "threading_help": "A change applies only to new messages. Existing threads stay as they are. Required is good for rooms where each message is a separate topic, such as support requests. Encouraged keeps busy rooms easy to read, but does not force threads."
-      }
+      },
+      "embed_link": "Open inside Chatto",
+      "embed_link_description": "Shows the page in the chat area instead of a new tab. The site must allow embedding.",
+      "embed_open_in_tab": "Open in new tab",
+      "embed_not_found": "Link not found"
     },
     "security": {
       "title": "Security",
