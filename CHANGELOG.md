@@ -3,6 +3,18 @@
 All notable changes to Chatto. Maintained by release-please from the
 conventional-commit messages on `main` — do not edit by hand.
 
+## [0.5.0-beta.12](https://github.com/chattocorp/chatto/compare/v0.5.0-beta.11...v0.5.0-beta.12) (2026-10-05)
+
+
+### Features
+
+* extract chatto-client-placement agentic skill ([#2808](https://github.com/chattocorp/chatto/issues/2808)) ([cbe9353](https://github.com/chattocorp/chatto/commit/cbe9353c9f5b2845e27080bcd1fd2aa2095554d1))
+
+
+### Bug Fixes
+
+* **link-previews:** show video thumbnails in social-post cards ([#2811](https://github.com/chattocorp/chatto/issues/2811)) ([410c078](https://github.com/chattocorp/chatto/commit/410c078749fc701ba48a8f1ddd5176d7b1e10b55))
+
 ## [0.5.0-beta.11](https://github.com/chattocorp/chatto/compare/v0.5.0-beta.10...v0.5.0-beta.11) (2026-10-04)
 
 
