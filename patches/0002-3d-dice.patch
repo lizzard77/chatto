@@ -1,0 +1,1443 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Sat, 10 Oct 2026 11:30:37 +0200
+Subject: [PATCH] feat: roll dice bot results as 3D dice
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Dice bots append a marker link [🎲](#chatto-dice:<kind>.<sides>.<value>,...)
+to their roll message. The renderer turns it into a replay button and,
+when the message arrives live in the open conversation, throws the dice
+across the window with a small dependency-free WebGL overlay. Daggerheart
+Hope/Fear dice are coloured and labelled; the overlay is switchable per
+device in Settings → Appearance (off by default with reduced motion).
+---
+ apps/frontend/messages/de-DE/dice.json        |  29 +
+ apps/frontend/messages/en-GB/dice.json        |  29 +
+ apps/frontend/scripts/check-bundle-size.mjs   |   3 +-
+ .../settings/AppAppearanceSettings.svelte     |  24 +
+ apps/frontend/src/lib/dice/dice.svelte.ts     | 115 +++
+ apps/frontend/src/lib/dice/diceGeometry.ts    | 272 +++++++
+ apps/frontend/src/lib/dice/diceRenderer.ts    | 679 ++++++++++++++++++
+ apps/frontend/src/lib/dice/diceSpec.ts        |  68 ++
+ apps/frontend/src/lib/i18n/catalogSections.js |   1 +
+ apps/frontend/src/lib/markdown.ts             |  31 +
+ apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   8 +
+ .../[roomId]/ConversationPane.svelte          |   9 +
+ 12 files changed, 1267 insertions(+), 1 deletion(-)
+ create mode 100644 apps/frontend/messages/de-DE/dice.json
+ create mode 100644 apps/frontend/messages/en-GB/dice.json
+ create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
+ create mode 100644 apps/frontend/src/lib/dice/diceGeometry.ts
+ create mode 100644 apps/frontend/src/lib/dice/diceRenderer.ts
+ create mode 100644 apps/frontend/src/lib/dice/diceSpec.ts
+
+diff --git a/apps/frontend/messages/de-DE/dice.json b/apps/frontend/messages/de-DE/dice.json
+new file mode 100644
+index 000000000..5a69aeff0
+--- /dev/null
++++ b/apps/frontend/messages/de-DE/dice.json
+@@ -0,0 +1,29 @@
++{
++  "dice": {
++    "hope": "Hoffnung",
++    "fear": "Furcht",
++    "advantage": "Vorteil",
++    "disadvantage": "Nachteil",
++    "with_hope": "mit Hoffnung",
++    "with_fear": "mit Furcht",
++    "critical": "Kritischer Erfolg!",
++    "replay": "Würfel noch einmal rollen",
++    "settings": {
++      "title": "3D-Würfel",
++      "mode": {
++        "all": {
++          "label": "Alle Würfe",
++          "description": "Jeder Wurf des Würfel-Bots im offenen Chat rollt über das Fenster."
++        },
++        "own": {
++          "label": "Nur meine Würfe",
++          "description": "Nur deine eigenen Würfe rollen in 3D."
++        },
++        "off": {
++          "label": "Aus",
++          "description": "Keine 3D-Würfel, für schwächere Geräte. Das 🎲 neben einem Wurf spielt ihn trotzdem ab."
++        }
++      }
++    }
++  }
++}
+diff --git a/apps/frontend/messages/en-GB/dice.json b/apps/frontend/messages/en-GB/dice.json
+new file mode 100644
+index 000000000..2a6c89861
+--- /dev/null
++++ b/apps/frontend/messages/en-GB/dice.json
+@@ -0,0 +1,29 @@
++{
++  "dice": {
++    "hope": "Hope",
++    "fear": "Fear",
++    "advantage": "Advantage",
++    "disadvantage": "Disadvantage",
++    "with_hope": "with Hope",
++    "with_fear": "with Fear",
++    "critical": "Critical success!",
++    "replay": "Roll these dice again",
++    "settings": {
++      "title": "3D dice",
++      "mode": {
++        "all": {
++          "label": "All rolls",
++          "description": "Every dice bot roll in the open conversation tumbles across the window."
++        },
++        "own": {
++          "label": "Only my rolls",
++          "description": "Only rolls you made yourself are thrown in 3D."
++        },
++        "off": {
++          "label": "Off",
++          "description": "No 3D dice, for slower devices. The 🎲 next to a roll still replays it."
++        }
++      }
++    }
++  }
++}
+diff --git a/apps/frontend/scripts/check-bundle-size.mjs b/apps/frontend/scripts/check-bundle-size.mjs
+index fb506fb04..8b0f69e00 100644
+--- a/apps/frontend/scripts/check-bundle-size.mjs
++++ b/apps/frontend/scripts/check-bundle-size.mjs
+@@ -23,7 +23,8 @@ const routes = [
+     name: 'overview',
+     // CI baseline: 340.3 KiB, with roughly 10% headroom. Theme customisation
+     // added about 3.7 KiB of global CSS and preference code.
+-    budgetKiB: 379,
++    // lizzard fork: +2 KiB for the sidebar iframe and 3D dice patches.
++    budgetKiB: 381,
+     components: [
+       'src/routes/+layout.svelte',
+       'src/routes/chat/+layout.svelte',
+diff --git a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte b/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
+index f4a71787f..1a83e7842 100644
+--- a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
++++ b/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
+@@ -11,6 +11,7 @@
+   import AccentColorPicker from './AccentColorPicker.svelte';
+   import SurfaceTonePicker from './SurfaceTonePicker.svelte';
+   import { RangeField } from '$lib/ui/form';
++  import { dicePreferences, type DiceMode } from '$lib/dice/dice.svelte';
+ 
+   const contrastDisplayValue = $derived(`${Math.round((userPreferences.contrastAge - 20) * 5)}%`);
+   const contrastValueText = $derived(
+@@ -76,6 +77,14 @@
+     label: string;
+     description: string;
+   }>);
++
++  const diceModeOptions = $derived(
++    (['all', 'own', 'off'] as const).map((value) => ({
++      value,
++      label: m(`dice.settings.mode.${value}.label`),
++      description: m(`dice.settings.mode.${value}.description`)
++    })) satisfies Array<{ value: DiceMode; label: string; description: string }>
++  );
+ </script>
+ 
+ <PageTitle title={m('settings.app_preferences.appearance.title')} scope="app" />
+@@ -193,6 +202,21 @@
+           </div>
+         </div>
+       </Panel>
++
++      <Panel title={m('dice.settings.title')} icon="iconify icon-[uil--dice-five]">
++        <div class="max-w-md">
++          <div class="flex flex-col gap-2" role="radiogroup" aria-label={m('dice.settings.title')}>
++            {#each diceModeOptions as option (option.value)}
++              <ChoiceRow
++                label={option.label}
++                description={option.description}
++                selected={dicePreferences.mode === option.value}
++                onclick={() => (dicePreferences.mode = option.value)}
++              />
++            {/each}
++          </div>
++        </div>
++      </Panel>
+     </div>
+   </PaneContent>
+ </div>
+diff --git a/apps/frontend/src/lib/dice/dice.svelte.ts b/apps/frontend/src/lib/dice/dice.svelte.ts
+new file mode 100644
+index 000000000..3ddf7efbe
+--- /dev/null
++++ b/apps/frontend/src/lib/dice/dice.svelte.ts
+@@ -0,0 +1,115 @@
++/**
++ * 3D dice for dice-bot messages: the per-device on/off preference, the live
++ * trigger for newly posted rolls, and replays from the 🎲 button.
++ *
++ * The WebGL renderer is loaded on the first roll only, so the feature costs
++ * nothing until dice are actually thrown.
++ */
++
++import type { RealtimeEvent } from '@chatto/client';
++import { Codecs, globalSlot } from '@chatto/client/storage/slot';
++import { m } from '$lib/i18n/messages';
++import { diceRollFromMessageBody, parseDiceSpec, type DieSpec } from './diceSpec';
++import type { DiceLabels, DiceOverlay } from './diceRenderer';
++
++/** Rolls older than this when they arrive are replays or catch-up, not live. */
++const LIVE_WINDOW_MS = 30_000;
++
++function prefersReducedMotion(): boolean {
++  return (
++    typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
++  );
++}
++
++/** Which live rolls this device throws in 3D. */
++export type DiceMode = 'all' | 'own' | 'off';
++
++const diceModes: readonly DiceMode[] = ['all', 'own', 'off'];
++
++// Earlier builds stored a plain on/off switch; keep honouring "off".
++const legacySlot = globalSlot('dice-3d', !prefersReducedMotion(), Codecs.boolean);
++const slot = globalSlot<DiceMode>(
++  'dice-3d-mode',
++  legacySlot.get() ? 'all' : 'off',
++  Codecs.json<DiceMode>((value): value is DiceMode => diceModes.includes(value as DiceMode))
++);
++
++class DicePreferences {
++  #mode = $state(slot.get());
++
++  /** Which new rolls are thrown in 3D on this device. */
++  get mode(): DiceMode {
++    return this.#mode;
++  }
++
++  set mode(value: DiceMode) {
++    this.#mode = value;
++    slot.set(value);
++  }
++}
++
++export const dicePreferences = new DicePreferences();
++
++let overlay: DiceOverlay | null = null;
++let renderer: Promise<typeof import('./diceRenderer')> | null = null;
++// Bookkeeping only; nothing renders from it.
++// eslint-disable-next-line svelte/prefer-svelte-reactivity
++const rolledEventIds = new Set<string>();
++
++function labels(): DiceLabels {
++  return {
++    hope: m('dice.hope'),
++    fear: m('dice.fear'),
++    adv: m('dice.advantage'),
++    dis: m('dice.disadvantage'),
++    withHope: m('dice.with_hope'),
++    withFear: m('dice.with_fear'),
++    critical: m('dice.critical')
++  };
++}
++
++async function throwDice(dice: DieSpec[]): Promise<void> {
++  try {
++    renderer ??= import('./diceRenderer');
++    const { DiceOverlay } = await renderer;
++    overlay ??= new DiceOverlay(() => {
++      overlay?.destroy();
++      overlay = null;
++    });
++    overlay.roll(dice, labels());
++  } catch (error) {
++    renderer = null;
++    console.warn('[dice] 3D dice unavailable:', error);
++  }
++}
++
++/**
++ * Throw the dice of a live message in the conversation the viewer is looking
++ * at. Call it for posted messages of that conversation only. `viewerId` is the
++ * signed-in user, for the "only my rolls" mode.
++ */
++export function rollDiceForLiveMessage(
++  event: RealtimeEvent | null | undefined,
++  viewerId: string | null | undefined
++): void {
++  const mode = dicePreferences.mode;
++  if (!event || event.event.case !== 'messagePosted' || mode === 'off') return;
++  const posted = event.event.value;
++  if (posted.echoOfEventId || rolledEventIds.has(event.id)) return;
++  const roll = diceRollFromMessageBody(posted.bodyPlaintext);
++  if (!roll) return;
++  if (mode === 'own' && (!viewerId || roll.rollerId !== viewerId)) return;
++  const createdAt = event.createdAt?.toDate().getTime() ?? 0;
++  if (Date.now() - createdAt > LIVE_WINDOW_MS) return;
++  if (document.visibilityState !== 'visible') return;
++
++  rolledEventIds.add(event.id);
++  if (rolledEventIds.size > 200) rolledEventIds.delete(rolledEventIds.values().next().value!);
++  void throwDice(roll.dice);
++}
++
++/** Replay a roll from its 🎲 button. Works even when automatic rolls are off. */
++export function replayDice(spec: string): void {
++  const dice = parseDiceSpec(spec);
++  if (dice) void throwDice(dice);
++}
+diff --git a/apps/frontend/src/lib/dice/diceGeometry.ts b/apps/frontend/src/lib/dice/diceGeometry.ts
+new file mode 100644
+index 000000000..520056191
+--- /dev/null
++++ b/apps/frontend/src/lib/dice/diceGeometry.ts
+@@ -0,0 +1,272 @@
++/**
++ * Polyhedral dice for the 3D roll overlay.
++ *
++ * Each die is a convex hull of a few vertices. The faces are found by brute
++ * force, which is cheap at these sizes and keeps the solids free of hand-written
++ * face tables. Every face gets a label, a reading direction ("up" of the
++ * printed number), and a 2D layout that both the texture painter and the UV
++ * mapping use, so printed numbers line up with the geometry.
++ */
++
++export type Vec3 = [number, number, number];
++
++export type DieFace = {
++  /** Corners in counter-clockwise order seen from outside. */
++  corners: Vec3[];
++  normal: Vec3;
++  /** Unit vector in the face plane along which the printed label is upright. */
++  up: Vec3;
++  /** Corners in face coordinates, normalized to the unit circle. */
++  layout: [number, number][];
++  /** Distance from the layout origin to the nearest edge, in layout units. */
++  inradius: number;
++  /** One label in the middle, or one label per corner for a d4. */
++  labels: string[];
++};
++
++export type DieShape = {
++  sides: number;
++  faces: DieFace[];
++  /** Direction that must point up so the die shows `value`, plus a reading direction. */
++  restingPose(value: number): { up: Vec3; forward: Vec3 };
++  /** Distance from the centre to the table when `up` points up. */
++  restHeight(up: Vec3): number;
++};
++
++export type DieVariant = 'normal' | 'tens' | 'units';
++
++const PHI = (1 + Math.sqrt(5)) / 2;
++const EPS = 1e-6;
++
++export const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
++export const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
++export const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
++export const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
++export const cross = (a: Vec3, b: Vec3): Vec3 => [
++  a[1] * b[2] - a[2] * b[1],
++  a[2] * b[0] - a[0] * b[2],
++  a[0] * b[1] - a[1] * b[0]
++];
++export const length = (a: Vec3): number => Math.hypot(a[0], a[1], a[2]);
++export const normalize = (a: Vec3): Vec3 => scale(a, 1 / length(a));
++
++/** Component of `v` perpendicular to unit vector `n`, normalized. */
++function perpendicular(v: Vec3, n: Vec3): Vec3 {
++  return normalize(sub(v, scale(n, dot(v, n))));
++}
++
++function signedCombos(base: number[][]): Vec3[] {
++  const out: Vec3[] = [];
++  for (const b of base) {
++    for (const sx of b[0] ? [1, -1] : [1])
++      for (const sy of b[1] ? [1, -1] : [1])
++        for (const sz of b[2] ? [1, -1] : [1]) out.push([b[0] * sx, b[1] * sy, b[2] * sz]);
++  }
++  return out;
++}
++
++function solidVertices(sides: number): Vec3[] {
++  switch (sides) {
++    case 4:
++      return [
++        [1, 1, 1],
++        [1, -1, -1],
++        [-1, 1, -1],
++        [-1, -1, 1]
++      ];
++    case 6:
++      return signedCombos([[1, 1, 1]]);
++    case 8:
++      return signedCombos([
++        [1, 0, 0],
++        [0, 1, 0],
++        [0, 0, 1]
++      ]);
++    case 10: {
++      // Pentagonal trapezohedron. The ring offset keeps every kite planar.
++      const h = 1.05;
++      const c = Math.cos(Math.PI / 5);
++      const ring = (h * (1 - c)) / (1 + c);
++      const vertices: Vec3[] = [
++        [0, h, 0],
++        [0, -h, 0]
++      ];
++      for (let k = 0; k < 5; k++) {
++        const a = (k * 2 * Math.PI) / 5;
++        vertices.push([Math.cos(a), ring, Math.sin(a)]);
++        vertices.push([Math.cos(a + Math.PI / 5), -ring, Math.sin(a + Math.PI / 5)]);
++      }
++      return vertices;
++    }
++    case 12:
++      return [
++        ...signedCombos([[1, 1, 1]]),
++        ...signedCombos([
++          [0, 1 / PHI, PHI],
++          [1 / PHI, PHI, 0],
++          [PHI, 0, 1 / PHI]
++        ])
++      ];
++    case 20:
++      return signedCombos([
++        [0, 1, PHI],
++        [1, PHI, 0],
++        [PHI, 0, 1]
++      ]);
++    default:
++      throw new Error(`Unsupported die: d${sides}`);
++  }
++}
++
++/** Faces of the convex hull, each with corners sorted counter-clockwise from outside. */
++function hullFaces(vertices: Vec3[]): { corners: Vec3[]; normal: Vec3 }[] {
++  const faces: { corners: Vec3[]; normal: Vec3 }[] = [];
++  for (let i = 0; i < vertices.length; i++) {
++    for (let j = i + 1; j < vertices.length; j++) {
++      for (let k = j + 1; k < vertices.length; k++) {
++        let normal = cross(sub(vertices[j], vertices[i]), sub(vertices[k], vertices[i]));
++        if (length(normal) < EPS) continue;
++        normal = normalize(normal);
++        let offset = dot(normal, vertices[i]);
++        const distances = vertices.map((v) => dot(normal, v) - offset);
++        if (distances.every((d) => d < EPS)) {
++          // normal already points outwards
++        } else if (distances.every((d) => d > -EPS)) {
++          normal = scale(normal, -1);
++          offset = -offset;
++        } else {
++          continue;
++        }
++        if (faces.some((f) => dot(f.normal, normal) > 1 - EPS)) continue;
++        const onPlane = vertices.filter((v) => Math.abs(dot(normal, v) - offset) < 1e-4);
++        const centre = scale(onPlane.reduce(add), 1 / onPlane.length);
++        const a = perpendicular(sub(onPlane[0], centre), normal);
++        const b = cross(normal, a);
++        const angle = (v: Vec3) => Math.atan2(dot(sub(v, centre), b), dot(sub(v, centre), a));
++        faces.push({ corners: [...onPlane].sort((p, q) => angle(p) - angle(q)), normal });
++      }
++    }
++  }
++  return faces;
++}
++
++function centroid(points: Vec3[]): Vec3 {
++  return scale(points.reduce(add), 1 / points.length);
++}
++
++/** Lay out a face in 2D: x to the right of `up`, y along `up`, scaled into the unit circle. */
++function layoutFace(corners: Vec3[], normal: Vec3, up: Vec3) {
++  const centre = centroid(corners);
++  const right = cross(up, normal);
++  const raw = corners.map((p) => {
++    const d = sub(p, centre);
++    return [dot(d, right), dot(d, up)] as [number, number];
++  });
++  const radius = Math.max(...raw.map(([x, y]) => Math.hypot(x, y)));
++  const layout = raw.map(([x, y]) => [x / radius, y / radius] as [number, number]);
++  let inradius = Infinity;
++  for (let i = 0; i < layout.length; i++) {
++    const [ax, ay] = layout[i];
++    const [bx, by] = layout[(i + 1) % layout.length];
++    const distance = Math.abs(ax * by - ay * bx) / Math.hypot(bx - ax, by - ay);
++    inradius = Math.min(inradius, distance);
++  }
++  return { layout, inradius };
++}
++
++function faceLabel(number: number, variant: DieVariant): string {
++  if (variant === 'tens') return String((number % 10) * 10).padStart(2, '0');
++  if (variant === 'units') return String(number % 10);
++  return String(number);
++}
++
++/** Face number (1…sides) that shows a die value, for d100 halves as well. */
++export function faceNumberFor(value: number, variant: DieVariant): number {
++  if (variant === 'tens') return Math.floor((value % 100) / 10) || 10;
++  if (variant === 'units') return value % 10 || 10;
++  return value;
++}
++
++const shapeCache = new Map<string, DieShape>();
++
++/** Build (and cache) a die. Circumradius is about 1, a d4 is a bit larger. */
++export function dieShape(sides: number, variant: DieVariant = 'normal'): DieShape {
++  const key = `${sides}:${variant}`;
++  const cached = shapeCache.get(key);
++  if (cached) return cached;
++
++  const raw = solidVertices(sides);
++  const circumradius = Math.max(...raw.map(length));
++  const size = sides === 4 ? 1.3 : 1;
++  const vertices = raw.map((v) => scale(v, size / circumradius));
++  const hull = hullFaces(vertices);
++
++  let shape: DieShape;
++  if (sides === 4) {
++    // A d4 is read at the top corner: each face prints the numbers of its corners.
++    const vertexNumber = (v: Vec3) => vertices.findIndex((w) => length(sub(v, w)) < EPS) + 1;
++    const faces = hull.map(({ corners, normal }) => {
++      const up = perpendicular(corners[0], normal);
++      return {
++        corners,
++        normal,
++        up,
++        ...layoutFace(corners, normal, up),
++        labels: corners.map((c) => String(vertexNumber(c)))
++      };
++    });
++    shape = {
++      sides,
++      faces,
++      restingPose(value) {
++        const up = normalize(vertices[value - 1]);
++        return { up, forward: perpendicular(vertices[value % 4], up) };
++      },
++      restHeight: (up) => -Math.min(...vertices.map((v) => dot(v, up)))
++    };
++  } else {
++    // Number opposite faces so that they add up to sides + 1, like real dice.
++    const numbers = new Array<number>(hull.length).fill(0);
++    let next = 1;
++    for (let i = 0; i < hull.length; i++) {
++      if (numbers[i]) continue;
++      const opposite = hull.findIndex((f) => dot(f.normal, hull[i].normal) < -1 + 1e-4);
++      numbers[i] = next;
++      if (opposite >= 0) numbers[opposite] = sides + 1 - next;
++      next++;
++    }
++    const faces = hull.map(({ corners, normal }, index) => {
++      const centre = centroid(corners);
++      let towards: Vec3;
++      if (sides === 10) {
++        // Kites read towards their pole.
++        towards = corners.reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a));
++      } else if (corners.length % 2 === 0) {
++        // Even polygons read towards an edge, odd ones towards a corner.
++        towards = scale(add(corners[0], corners[1]), 0.5);
++      } else {
++        towards = corners[0];
++      }
++      const up = perpendicular(sub(towards, centre), normal);
++      return {
++        corners,
++        normal,
++        up,
++        ...layoutFace(corners, normal, up),
++        labels: [faceLabel(numbers[index], variant)]
++      };
++    });
++    shape = {
++      sides,
++      faces,
++      restingPose(value) {
++        const face = faces[numbers.indexOf(faceNumberFor(value, variant))] ?? faces[0];
++        return { up: face.normal, forward: face.up };
++      },
++      restHeight: (up) => -Math.min(...vertices.map((v) => dot(v, up)))
++    };
++  }
++
++  shapeCache.set(key, shape);
++  return shape;
++}
+diff --git a/apps/frontend/src/lib/dice/diceRenderer.ts b/apps/frontend/src/lib/dice/diceRenderer.ts
+new file mode 100644
+index 000000000..4796e6c5d
+--- /dev/null
++++ b/apps/frontend/src/lib/dice/diceRenderer.ts
+@@ -0,0 +1,679 @@
++/**
++ * Dependency-free WebGL overlay that throws dice across the window.
++ *
++ * Results come from the dice bot, so nothing is simulated: every die follows a
++ * scripted path (thrown in from off-screen, bouncing, rolling to a stop) whose
++ * spin unwinds exactly into the pose that shows its value. The canvas exists
++ * only while a roll is on screen and never takes pointer events.
++ */
++
++import type { DieKind, DieSpec } from './diceSpec';
++import {
++  add,
++  cross,
++  dieShape,
++  dot,
++  length,
++  normalize,
++  scale,
++  sub,
++  type DieShape,
++  type DieVariant,
++  type Vec3
++} from './diceGeometry';
++
++export type DiceLabels = {
++  hope: string;
++  fear: string;
++  adv: string;
++  dis: string;
++  withHope: string;
++  withFear: string;
++  critical: string;
++};
++
++type Theme = { body: string; edge: string; ink: string; label?: keyof DiceLabels; pill: string };
++
++/** Hope gold and Fear violet match the colours of Pantheon's text output. */
++const THEMES: Record<DieKind, Theme> = {
++  hope: { body: '#f2c230', edge: '#a87b00', ink: '#2a1a00', label: 'hope', pill: '#d9a514' },
++  fear: { body: '#4b2178', edge: '#24093f', ink: '#f1e6ff', label: 'fear', pill: '#8e44ad' },
++  adv: { body: '#27ae60', edge: '#15703b', ink: '#ffffff', label: 'adv', pill: '#27ae60' },
++  dis: { body: '#c0392b', edge: '#7a1d14', ink: '#ffffff', label: 'dis', pill: '#c0392b' },
++  gm: { body: '#6e1a1a', edge: '#330808', ink: '#ffd27a', pill: '#6e1a1a' },
++  std: { body: '#f3efe4', edge: '#a8a08a', ink: '#1f1f1f', pill: '#555555' },
++  drop: { body: '#8d8d8d', edge: '#555555', ink: '#e6e6e6', pill: '#555555' }
++};
++
++const ROLL_SECONDS = 1.6;
++const HOLD_SECONDS = 2.8;
++const FADE_SECONDS = 0.6;
++const PIXELS_PER_UNIT = 42;
++const FOV = (34 * Math.PI) / 180;
++const CAMERA_TILT = (22 * Math.PI) / 180;
++const CELL = 128;
++
++// ---------------------------------------------------------------------------
++// Matrix and quaternion helpers (column-major, like WebGL expects)
++// ---------------------------------------------------------------------------
++
++type Mat4 = Float32Array;
++type Quat = [number, number, number, number];
++
++function perspective(fovy: number, aspect: number, near: number, far: number): Mat4 {
++  const f = 1 / Math.tan(fovy / 2);
++  const out = new Float32Array(16);
++  out[0] = f / aspect;
++  out[5] = f;
++  out[10] = (far + near) / (near - far);
++  out[11] = -1;
++  out[14] = (2 * far * near) / (near - far);
++  return out;
++}
++
++function lookAt(eye: Vec3, target: Vec3, upHint: Vec3): Mat4 {
++  const z = normalize(sub(eye, target));
++  const x = normalize(cross(upHint, z));
++  const y = cross(z, x);
++  return new Float32Array([
++    x[0],
++    y[0],
++    z[0],
++    0,
++    x[1],
++    y[1],
++    z[1],
++    0,
++    x[2],
++    y[2],
++    z[2],
++    0,
++    -dot(x, eye),
++    -dot(y, eye),
++    -dot(z, eye),
++    1
++  ]);
++}
++
++function multiply(a: Mat4, b: Mat4): Mat4 {
++  const out = new Float32Array(16);
++  for (let col = 0; col < 4; col++) {
++    for (let row = 0; row < 4; row++) {
++      let sum = 0;
++      for (let k = 0; k < 4; k++) sum += a[k * 4 + row] * b[col * 4 + k];
++      out[col * 4 + row] = sum;
++    }
++  }
++  return out;
++}
++
++function axisAngle(axis: Vec3, angle: number): Quat {
++  const s = Math.sin(angle / 2);
++  return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)];
++}
++
++function quatMultiply(a: Quat, b: Quat): Quat {
++  return [
++    a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
++    a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
++    a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
++    a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
++  ];
++}
++
++/** Quaternion of the rotation matrix with rows r0, r1, r2. */
++function quatFromRows(r0: Vec3, r1: Vec3, r2: Vec3): Quat {
++  const trace = r0[0] + r1[1] + r2[2];
++  if (trace > 0) {
++    const s = 0.5 / Math.sqrt(trace + 1);
++    return [(r2[1] - r1[2]) * s, (r0[2] - r2[0]) * s, (r1[0] - r0[1]) * s, 0.25 / s];
++  }
++  if (r0[0] > r1[1] && r0[0] > r2[2]) {
++    const s = 2 * Math.sqrt(1 + r0[0] - r1[1] - r2[2]);
++    return [0.25 * s, (r0[1] + r1[0]) / s, (r0[2] + r2[0]) / s, (r2[1] - r1[2]) / s];
++  }
++  if (r1[1] > r2[2]) {
++    const s = 2 * Math.sqrt(1 + r1[1] - r0[0] - r2[2]);
++    return [(r0[1] + r1[0]) / s, 0.25 * s, (r1[2] + r2[1]) / s, (r0[2] - r2[0]) / s];
++  }
++  const s = 2 * Math.sqrt(1 + r2[2] - r0[0] - r1[1]);
++  return [(r0[2] + r2[0]) / s, (r1[2] + r2[1]) / s, 0.25 * s, (r1[0] - r0[1]) / s];
++}
++
++/**
++ * Rotation that turns local `up` to world +Y and local `forward` to world -Z,
++ * which is "upright on screen" for the tilted top-down camera.
++ */
++function restingRotation(up: Vec3, forward: Vec3): Quat {
++  const side = cross(up, forward);
++  // R = W * L^T with L = [side | up | forward] and W = [-X | +Y | -Z].
++  const rows: Vec3[] = [scale(side, -1), up, scale(forward, -1)];
++  return quatFromRows(rows[0], rows[1], rows[2]);
++}
++
++function modelMatrix(q: Quat, t: Vec3): Mat4 {
++  const [x, y, z, w] = q;
++  return new Float32Array([
++    1 - 2 * (y * y + z * z),
++    2 * (x * y + z * w),
++    2 * (x * z - y * w),
++    0,
++    2 * (x * y - z * w),
++    1 - 2 * (x * x + z * z),
++    2 * (y * z + x * w),
++    0,
++    2 * (x * z + y * w),
++    2 * (y * z - x * w),
++    1 - 2 * (x * x + y * y),
++    0,
++    t[0],
++    t[1],
++    t[2],
++    1
++  ]);
++}
++
++const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
++const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
++const random = (min: number, max: number) => min + Math.random() * (max - min);
++
++// ---------------------------------------------------------------------------
++// Textures and meshes
++// ---------------------------------------------------------------------------
++
++function atlasGrid(faceCount: number) {
++  const cols = faceCount <= 8 ? 4 : 8;
++  const rows = 2 ** Math.ceil(Math.log2(Math.ceil(faceCount / cols)));
++  return { cols, rows, width: cols * CELL, height: rows * CELL };
++}
++
++/** Face layout point → atlas pixel. Shared by painter and UVs so they agree. */
++function cellPoint(index: number, cols: number, [x, y]: [number, number]): [number, number] {
++  const cx = (index % cols) * CELL;
++  const cy = Math.floor(index / cols) * CELL;
++  return [cx + CELL * (0.5 + 0.46 * x), cy + CELL * (0.5 - 0.46 * y)];
++}
++
++function paintAtlas(shape: DieShape, theme: Theme): HTMLCanvasElement {
++  const { cols, width, height } = atlasGrid(shape.faces.length);
++  const canvas = document.createElement('canvas');
++  canvas.width = width;
++  canvas.height = height;
++  const ctx = canvas.getContext('2d')!;
++  ctx.fillStyle = theme.body;
++  ctx.fillRect(0, 0, width, height);
++
++  shape.faces.forEach((face, index) => {
++    const corners = face.layout.map((p) => cellPoint(index, cols, p));
++    const [ox, oy] = cellPoint(index, cols, [0, 0]);
++    const span = CELL * 0.46;
++
++    const glow = ctx.createRadialGradient(ox, oy, 0, ox, oy, span);
++    glow.addColorStop(0, 'rgba(255,255,255,0.16)');
++    glow.addColorStop(1, 'rgba(255,255,255,0)');
++    ctx.fillStyle = glow;
++    ctx.beginPath();
++    corners.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
++    ctx.closePath();
++    ctx.fill();
++    ctx.lineWidth = CELL * 0.045;
++    ctx.lineJoin = 'round';
++    ctx.strokeStyle = theme.edge;
++    ctx.stroke();
++
++    ctx.fillStyle = theme.ink;
++    ctx.textAlign = 'center';
++    ctx.textBaseline = 'middle';
++    const draw = (text: string, x: number, y: number, angle: number, size: number) => {
++      ctx.save();
++      ctx.translate(x, y);
++      ctx.rotate(angle);
++      ctx.font = `700 ${size}px system-ui, "Segoe UI", Roboto, sans-serif`;
++      const width = ctx.measureText(text).width;
++      const fit = Math.min(1, (size * 1.25) / width);
++      if (fit < 1) ctx.font = `700 ${size * fit}px system-ui, "Segoe UI", Roboto, sans-serif`;
++      ctx.fillText(text, 0, 0);
++      if ((text === '6' || text === '9') && shape.sides > 6) {
++        ctx.fillRect(-size * 0.22, size * 0.42, size * 0.44, size * 0.07);
++      }
++      ctx.restore();
++    };
++
++    if (face.labels.length === 1) {
++      draw(face.labels[0], ox, oy, 0, span * face.inradius * 1.25);
++    } else {
++      // d4: one number per corner, upright towards that corner.
++      face.layout.forEach((corner, i) => {
++        const [px, py] = cellPoint(index, cols, [corner[0] * 0.56, corner[1] * 0.56]);
++        draw(face.labels[i], px, py, Math.atan2(px - ox, -(py - oy)), span * 0.42);
++      });
++    }
++  });
++  return canvas;
++}
++
++function buildMesh(shape: DieShape): Float32Array {
++  const { cols, width, height } = atlasGrid(shape.faces.length);
++  const data: number[] = [];
++  shape.faces.forEach((face, index) => {
++    const uv = face.layout.map((p) => {
++      const [x, y] = cellPoint(index, cols, p);
++      return [x / width, y / height];
++    });
++    for (let i = 1; i < face.corners.length - 1; i++) {
++      for (const k of [0, i, i + 1]) {
++        data.push(...face.corners[k], ...face.normal, uv[k][0], uv[k][1]);
++      }
++    }
++  });
++  return new Float32Array(data);
++}
++
++// ---------------------------------------------------------------------------
++// GL programs
++// ---------------------------------------------------------------------------
++
++const DIE_VS = `
++attribute vec3 aPos; attribute vec3 aNormal; attribute vec2 aUv;
++uniform mat4 uModel; uniform mat4 uViewProj;
++varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorld;
++void main() {
++  vec4 world = uModel * vec4(aPos, 1.0);
++  vWorld = world.xyz;
++  vNormal = (uModel * vec4(aNormal, 0.0)).xyz;
++  vUv = aUv;
++  gl_Position = uViewProj * world;
++}`;
++
++const DIE_FS = `
++precision mediump float;
++uniform sampler2D uTex; uniform vec3 uLight; uniform vec3 uEye; uniform float uAlpha;
++varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorld;
++void main() {
++  vec3 n = normalize(vNormal);
++  vec3 l = normalize(uLight);
++  vec3 h = normalize(l + normalize(uEye - vWorld));
++  float diffuse = max(dot(n, l), 0.0);
++  float spec = pow(max(dot(n, h), 0.0), 48.0) * 0.3;
++  vec3 color = texture2D(uTex, vUv).rgb * (0.42 + 0.68 * diffuse) + spec;
++  gl_FragColor = vec4(color * uAlpha, uAlpha);
++}`;
++
++const SHADOW_VS = `
++attribute vec2 aCorner;
++uniform mat4 uViewProj; uniform vec3 uCenter; uniform float uRadius;
++varying vec2 vCorner;
++void main() {
++  vCorner = aCorner;
++  gl_Position = uViewProj * vec4(uCenter + vec3(aCorner.x, 0.0, aCorner.y) * uRadius, 1.0);
++}`;
++
++const SHADOW_FS = `
++precision mediump float;
++uniform float uAlpha;
++varying vec2 vCorner;
++void main() {
++  float a = smoothstep(1.0, 0.15, length(vCorner)) * uAlpha;
++  gl_FragColor = vec4(0.0, 0.0, 0.0, a);
++}`;
++
++function compile(gl: WebGLRenderingContext, vs: string, fs: string): WebGLProgram {
++  const program = gl.createProgram()!;
++  for (const [type, source] of [
++    [gl.VERTEX_SHADER, vs],
++    [gl.FRAGMENT_SHADER, fs]
++  ] as const) {
++    const shader = gl.createShader(type)!;
++    gl.shaderSource(shader, source);
++    gl.compileShader(shader);
++    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
++      throw new Error(gl.getShaderInfoLog(shader) ?? 'shader compile failed');
++    }
++    gl.attachShader(program, shader);
++  }
++  gl.linkProgram(program);
++  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
++    throw new Error(gl.getProgramInfoLog(program) ?? 'program link failed');
++  }
++  return program;
++}
++
++// ---------------------------------------------------------------------------
++// Scene
++// ---------------------------------------------------------------------------
++
++type Die = {
++  spec: DieSpec;
++  shape: DieShape;
++  shapeKey: string;
++  textureKey: string;
++  start: Vec3;
++  end: Vec3;
++  rest: number;
++  finalRotation: Quat;
++  spinAxis: Vec3;
++  spin: number;
++  delay: number;
++  duration: number;
++  bounce: number;
++  label?: HTMLElement;
++};
++
++type Camera = { viewProj: Mat4; eye: Vec3; halfWidth: number; halfDepth: number };
++
++function camera(width: number, height: number): Camera {
++  const visibleHeight = height / PIXELS_PER_UNIT;
++  const distance = visibleHeight / 2 / Math.tan(FOV / 2);
++  const eye: Vec3 = [0, distance * Math.cos(CAMERA_TILT), distance * Math.sin(CAMERA_TILT)];
++  const view = lookAt(eye, [0, 0, 0], [0, 0, -1]);
++  const projection = perspective(FOV, width / height, 0.5, distance * 3);
++  return {
++    viewProj: multiply(projection, view),
++    eye,
++    halfWidth: width / PIXELS_PER_UNIT / 2,
++    halfDepth: visibleHeight / 2
++  };
++}
++
++function project(cam: Camera, p: Vec3, width: number, height: number): [number, number] {
++  const m = cam.viewProj;
++  const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
++  const y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
++  const w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
++  return [((x / w + 1) / 2) * width, ((1 - y / w) / 2) * height];
++}
++
++type ShownDie = { spec: DieSpec; sides: number; variant: DieVariant };
++
++/** d100 is two d10: tens and units. */
++function expandDice(dice: DieSpec[]): ShownDie[] {
++  return dice.flatMap((spec): ShownDie[] =>
++    spec.sides === 100
++      ? [
++          { spec, sides: 10, variant: 'tens' },
++          { spec, sides: 10, variant: 'units' }
++        ]
++      : [{ spec, sides: spec.sides, variant: 'normal' }]
++  );
++}
++
++function layoutDice(dice: ShownDie[], cam: Camera): Die[] {
++  const perRow = Math.max(2, Math.min(6, Math.floor((cam.halfWidth * 2 - 2) / 2.6)));
++  const rows = Math.ceil(dice.length / perRow);
++  const centre: Vec3 = [random(-0.2, 0.2) * cam.halfWidth, 0, random(-0.05, 0.2) * cam.halfDepth];
++  // One throw for all dice, from the lower left or lower right.
++  const fromLeft = Math.random() < 0.5;
++  const direction = normalize([fromLeft ? 1 : -1, 0, random(-0.9, -0.3)]);
++  const travel = Math.hypot(cam.halfWidth, cam.halfDepth) + 3;
++
++  return dice.map(({ spec, sides, variant }, index) => {
++    const row = Math.floor(index / perRow);
++    const inRow = Math.min(perRow, dice.length - row * perRow);
++    const column = index % perRow;
++    const end: Vec3 = [
++      centre[0] + (column - (inRow - 1) / 2) * 2.6 + random(-0.25, 0.25),
++      0,
++      centre[2] + (row - (rows - 1) / 2) * 2.6 + random(-0.25, 0.25)
++    ];
++    const shape = dieShape(sides, variant);
++    const pose = shape.restingPose(spec.value);
++    const yaw = axisAngle([0, 1, 0], random(-0.3, 0.3));
++    const finalRotation = quatMultiply(yaw, restingRotation(pose.up, pose.forward));
++    const rest = shape.restHeight(pose.up);
++    end[1] = rest;
++    const start = add(sub(end, scale(direction, travel)), [0, random(3, 5), 0]);
++    const rollAxis = normalize(cross([0, 1, 0], direction));
++    const wobble = normalize([random(-1, 1), random(-1, 1), random(-1, 1)]);
++    return {
++      spec,
++      shape,
++      shapeKey: `${sides}:${variant}`,
++      textureKey: `${sides}:${variant}:${spec.kind}`,
++      start,
++      end,
++      rest,
++      finalRotation,
++      spinAxis: normalize(add(rollAxis, scale(wobble, 0.35))),
++      spin: length(sub(end, start)) / 0.9 + random(0, Math.PI),
++      delay: index * 0.05 + random(0, 0.08),
++      duration: ROLL_SECONDS + random(-0.15, 0.25),
++      bounce: random(2.2, 3)
++    };
++  });
++}
++
++function dieState(die: Die, time: number): { position: Vec3; rotation: Quat; height: number } {
++  const s = clamp01((time - die.delay) / die.duration);
++  const position = add(die.start, scale(sub(die.end, die.start), easeOutCubic(s)));
++  // Falls onto the table at s = 0.2, then decaying hops that land at s = 0.6 and 1.
++  const lift =
++    s < 0.2
++      ? (die.start[1] - die.rest) * (1 - (s / 0.2) ** 2)
++      : die.bounce * (1 - s) ** 2 * Math.abs(Math.sin((Math.PI * (s - 0.2)) / 0.4));
++  position[1] = die.rest + lift;
++  const remaining = die.spin * (1 - easeOutCubic(clamp01(s / 0.94)));
++  const rotation = quatMultiply(axisAngle(die.spinAxis, -remaining), die.finalRotation);
++  return { position, rotation, height: lift };
++}
++
++export class DiceOverlay {
++  readonly #root: HTMLDivElement;
++  readonly #canvas: HTMLCanvasElement;
++  readonly #gl: WebGLRenderingContext;
++  readonly #dieProgram: WebGLProgram;
++  readonly #shadowProgram: WebGLProgram;
++  readonly #meshes = new Map<string, { buffer: WebGLBuffer; count: number }>();
++  readonly #textures = new Map<string, WebGLTexture>();
++  readonly #shadowBuffer: WebGLBuffer;
++  #dice: Die[] = [];
++  #banner: HTMLElement | null = null;
++  #startedAt = 0;
++  #frame = 0;
++  #onDone: () => void;
++
++  constructor(onDone: () => void) {
++    this.#onDone = onDone;
++    this.#root = document.createElement('div');
++    this.#root.setAttribute('aria-hidden', 'true');
++    this.#root.style.cssText =
++      'position:fixed;inset:0;pointer-events:none;z-index:2147483000;overflow:hidden;';
++    this.#canvas = document.createElement('canvas');
++    this.#canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;';
++    this.#root.append(this.#canvas);
++    const gl = this.#canvas.getContext('webgl', { alpha: true, antialias: true });
++    if (!gl) throw new Error('WebGL unavailable');
++    this.#gl = gl;
++    this.#dieProgram = compile(gl, DIE_VS, DIE_FS);
++    this.#shadowProgram = compile(gl, SHADOW_VS, SHADOW_FS);
++    this.#shadowBuffer = gl.createBuffer()!;
++    gl.bindBuffer(gl.ARRAY_BUFFER, this.#shadowBuffer);
++    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
++    document.body.append(this.#root);
++  }
++
++  /** Throw a new set of dice; any dice still on screen are cleared. */
++  roll(dice: DieSpec[], labels: DiceLabels): void {
++    for (const die of this.#dice) die.label?.remove();
++    this.#banner?.remove();
++    this.#banner = null;
++
++    const { width, height } = this.#resize();
++    const cam = camera(width, height);
++    this.#dice = layoutDice(expandDice(dice), cam);
++    for (const die of this.#dice) {
++      this.#ensureResources(die);
++      const theme = THEMES[die.spec.kind];
++      if (theme.label) die.label = this.#pill(labels[theme.label], theme.pill, '13px');
++    }
++
++    const hope = dice.find((d) => d.kind === 'hope');
++    const fear = dice.find((d) => d.kind === 'fear');
++    if (hope && fear) {
++      const [text, color] =
++        hope.value === fear.value
++          ? [labels.critical, '#ff9500']
++          : hope.value > fear.value
++            ? [labels.withHope, THEMES.hope.pill]
++            : [labels.withFear, THEMES.fear.pill];
++      this.#banner = this.#pill(text, color, '20px');
++    }
++
++    this.#startedAt = performance.now();
++    cancelAnimationFrame(this.#frame);
++    this.#frame = requestAnimationFrame(this.#render);
++  }
++
++  destroy(): void {
++    cancelAnimationFrame(this.#frame);
++    this.#gl.getExtension('WEBGL_lose_context')?.loseContext();
++    this.#root.remove();
++  }
++
++  #pill(text: string, color: string, size: string): HTMLElement {
++    const el = document.createElement('div');
++    el.textContent = text;
++    el.style.cssText =
++      `position:absolute;left:0;top:0;transform:translate(-50%,-50%);opacity:0;` +
++      `transition:opacity .25s;white-space:nowrap;font:700 ${size} system-ui,sans-serif;` +
++      `color:#fff;background:${color};padding:.15em .6em;border-radius:999px;` +
++      `box-shadow:0 2px 8px rgba(0,0,0,.35);text-shadow:0 1px 1px rgba(0,0,0,.35);`;
++    this.#root.append(el);
++    return el;
++  }
++
++  #resize() {
++    const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
++    const width = window.innerWidth;
++    const height = window.innerHeight;
++    if (this.#canvas.width !== Math.round(width * ratio))
++      this.#canvas.width = Math.round(width * ratio);
++    if (this.#canvas.height !== Math.round(height * ratio))
++      this.#canvas.height = Math.round(height * ratio);
++    return { width, height };
++  }
++
++  #ensureResources(die: Die): void {
++    const gl = this.#gl;
++    if (!this.#meshes.has(die.shapeKey)) {
++      const data = buildMesh(die.shape);
++      const buffer = gl.createBuffer()!;
++      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
++      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
++      this.#meshes.set(die.shapeKey, { buffer, count: data.length / 8 });
++    }
++    if (!this.#textures.has(die.textureKey)) {
++      const texture = gl.createTexture()!;
++      gl.bindTexture(gl.TEXTURE_2D, texture);
++      gl.texImage2D(
++        gl.TEXTURE_2D,
++        0,
++        gl.RGBA,
++        gl.RGBA,
++        gl.UNSIGNED_BYTE,
++        paintAtlas(die.shape, THEMES[die.spec.kind])
++      );
++      gl.generateMipmap(gl.TEXTURE_2D);
++      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
++      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
++      this.#textures.set(die.textureKey, texture);
++    }
++  }
++
++  #render = (now: number) => {
++    const time = (now - this.#startedAt) / 1000;
++    const landed = Math.max(...this.#dice.map((d) => d.delay + d.duration));
++    const fade = clamp01((time - landed - HOLD_SECONDS) / FADE_SECONDS);
++    if (fade >= 1) {
++      this.#onDone();
++      return;
++    }
++    const alpha = 1 - fade;
++
++    const { width, height } = this.#resize();
++    const cam = camera(width, height);
++    const gl = this.#gl;
++    gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
++    gl.clearColor(0, 0, 0, 0);
++    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
++    gl.enable(gl.BLEND);
++    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
++
++    const states = this.#dice.map((die) => dieState(die, time));
++
++    // Soft contact shadows first, without depth.
++    gl.disable(gl.DEPTH_TEST);
++    gl.disable(gl.CULL_FACE);
++    gl.useProgram(this.#shadowProgram);
++    gl.bindBuffer(gl.ARRAY_BUFFER, this.#shadowBuffer);
++    const corner = gl.getAttribLocation(this.#shadowProgram, 'aCorner');
++    gl.enableVertexAttribArray(corner);
++    gl.vertexAttribPointer(corner, 2, gl.FLOAT, false, 0, 0);
++    gl.uniformMatrix4fv(
++      gl.getUniformLocation(this.#shadowProgram, 'uViewProj'),
++      false,
++      cam.viewProj
++    );
++    states.forEach(({ position, height: lift }) => {
++      const near = 1 - Math.min(1, lift / 5);
++      gl.uniform3f(
++        gl.getUniformLocation(this.#shadowProgram, 'uCenter'),
++        position[0],
++        0,
++        position[2]
++      );
++      gl.uniform1f(gl.getUniformLocation(this.#shadowProgram, 'uRadius'), 1.5 + lift * 0.25);
++      gl.uniform1f(gl.getUniformLocation(this.#shadowProgram, 'uAlpha'), 0.4 * near * alpha);
++      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
++    });
++    gl.disableVertexAttribArray(corner);
++
++    gl.enable(gl.DEPTH_TEST);
++    gl.enable(gl.CULL_FACE);
++    const program = this.#dieProgram;
++    gl.useProgram(program);
++    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uViewProj'), false, cam.viewProj);
++    gl.uniform3f(gl.getUniformLocation(program, 'uLight'), -0.4, 1, 0.55);
++    gl.uniform3f(gl.getUniformLocation(program, 'uEye'), ...cam.eye);
++    gl.uniform1f(gl.getUniformLocation(program, 'uAlpha'), alpha);
++    const pos = gl.getAttribLocation(program, 'aPos');
++    const normal = gl.getAttribLocation(program, 'aNormal');
++    const uv = gl.getAttribLocation(program, 'aUv');
++    this.#dice.forEach((die, index) => {
++      const { position, rotation } = states[index];
++      const mesh = this.#meshes.get(die.shapeKey)!;
++      gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer);
++      gl.enableVertexAttribArray(pos);
++      gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 32, 0);
++      gl.enableVertexAttribArray(normal);
++      gl.vertexAttribPointer(normal, 3, gl.FLOAT, false, 32, 12);
++      gl.enableVertexAttribArray(uv);
++      gl.vertexAttribPointer(uv, 2, gl.FLOAT, false, 32, 24);
++      gl.bindTexture(gl.TEXTURE_2D, this.#textures.get(die.textureKey)!);
++      gl.uniformMatrix4fv(
++        gl.getUniformLocation(program, 'uModel'),
++        false,
++        modelMatrix(rotation, position)
++      );
++      gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
++
++      if (die.label) {
++        const [x, y] = project(cam, [position[0], 0, position[2] + 1.45], width, height);
++        die.label.style.left = `${x}px`;
++        die.label.style.top = `${y}px`;
++        die.label.style.opacity = time >= die.delay + die.duration ? String(alpha) : '0';
++      }
++    });
++
++    if (this.#banner) {
++      const xs = this.#dice.map((d) => d.end[0]);
++      const zs = this.#dice.map((d) => d.end[2]);
++      const centreX = (Math.min(...xs) + Math.max(...xs)) / 2;
++      const [x, y] = project(cam, [centreX, 0, Math.min(...zs) - 1.9], width, height);
++      this.#banner.style.left = `${x}px`;
++      this.#banner.style.top = `${y}px`;
++      this.#banner.style.opacity = time >= landed ? String(alpha) : '0';
++    }
++
++    this.#frame = requestAnimationFrame(this.#render);
++  };
++}
+diff --git a/apps/frontend/src/lib/dice/diceSpec.ts b/apps/frontend/src/lib/dice/diceSpec.ts
+new file mode 100644
+index 000000000..65b2c6b63
+--- /dev/null
++++ b/apps/frontend/src/lib/dice/diceSpec.ts
+@@ -0,0 +1,68 @@
++/**
++ * Dice roll markers in message bodies.
++ *
++ * A dice bot (for example Pantheon) appends a link `[🎲](#chatto-dice:<spec>)`
++ * to its roll result. The text stays readable for clients without this patch,
++ * while the patched renderer turns the link into a replay button and rolls
++ * the dice in 3D when the message arrives live.
++ *
++ * `<spec>` is a comma-separated list of `<kind>.<sides>.<value>` entries, for
++ * example `hope.12.7,fear.12.3,adv.6.4`, optionally followed by `;by=<userId>`
++ * naming who rolled (the bot posts the message, so its author is the bot).
++ */
++
++export const DICE_MARKER_PREFIX = '#chatto-dice:';
++
++/** What a die means for the roll; it selects colours and labels. */
++export type DieKind = 'hope' | 'fear' | 'adv' | 'dis' | 'gm' | 'std' | 'drop';
++
++export const dieKinds: readonly DieKind[] = ['hope', 'fear', 'adv', 'dis', 'gm', 'std', 'drop'];
++
++/** Die shapes that the renderer can show. d100 is shown as two d10. */
++export const supportedSides = [4, 6, 8, 10, 12, 20, 100] as const;
++
++export type DieSpec = { kind: DieKind; sides: number; value: number };
++
++/** At most this many dice are rolled at once. */
++export const MAX_DICE = 24;
++
++const ENTRY = /^([a-z]+)\.(\d{1,3})\.(\d{1,3})$/;
++const MARKER_IN_BODY = /\]\(#chatto-dice:([a-z0-9.,]{1,600})(?:;by=([A-Za-z0-9_-]{1,64}))?\)/;
++
++/** Parse a spec; returns null when it is malformed or contains no showable die. */
++export function parseDiceSpec(spec: string): DieSpec[] | null {
++  const dice: DieSpec[] = [];
++  for (const entry of spec.split(',')) {
++    const match = ENTRY.exec(entry);
++    if (!match) return null;
++    const kind = match[1] as DieKind;
++    const sides = Number(match[2]);
++    const value = Number(match[3]);
++    if (!dieKinds.includes(kind) || value < 1 || value > sides) return null;
++    if (!(supportedSides as readonly number[]).includes(sides)) continue;
++    if (dice.length < MAX_DICE) dice.push({ kind, sides, value });
++  }
++  return dice.length > 0 ? dice : null;
++}
++
++/**
++ * The spec of a marker link href, or null for any other href. Only checks the
++ * shape, so the markdown renderer stays small; replays parse it fully.
++ */
++export function diceSpecFromHref(href: string): string | null {
++  return (
++    /^#chatto-dice:([a-z]+\.\d+\.\d+(?:,[a-z]+\.\d+\.\d+){0,63})(?:;by=[\w-]{1,64})?$/.exec(
++      href
++    )?.[1] ?? null
++  );
++}
++
++export type DiceRoll = { dice: DieSpec[]; rollerId: string | null };
++
++/** The roll of the first marker in a raw markdown body. */
++export function diceRollFromMessageBody(body: string | undefined): DiceRoll | null {
++  if (!body || !body.includes(DICE_MARKER_PREFIX)) return null;
++  const match = MARKER_IN_BODY.exec(body);
++  const dice = match ? parseDiceSpec(match[1]) : null;
++  return dice ? { dice, rollerId: match?.[2] ?? null } : null;
++}
+diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
+index 2d2ef1fcb..eaad03736 100644
+--- a/apps/frontend/src/lib/i18n/catalogSections.js
++++ b/apps/frontend/src/lib/i18n/catalogSections.js
+@@ -5,6 +5,7 @@ export const catalogSections = /** @type {const} */ ([
+   'chat',
+   'common',
+   'composer',
++  'dice',
+   'emoji',
+   'error_page',
+   'media',
+diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
+index 88c2681a5..7a39c36a3 100644
+--- a/apps/frontend/src/lib/markdown.ts
++++ b/apps/frontend/src/lib/markdown.ts
+@@ -7,6 +7,7 @@ import tlds from 'tlds';
+ import { classifyMessageBodyChatLink } from '$lib/messageLinks';
+ import { collectMentionHandles, MENTIONS_ENV_KEY, mentionPlugin } from '$lib/markdownMentions';
+ import { m } from '$lib/i18n/messages';
++import { diceSpecFromHref } from '$lib/dice/diceSpec';
+ 
+ type CodeHighlightingModule = typeof import('$lib/codeHighlighting');
+ 
+@@ -418,6 +419,34 @@ function normalizeInlineNonBreakingSpaces(state: StateCore): void {
+   }
+ }
+ 
++/**
++ * Turn dice bot markers (`[🎲](#chatto-dice:…)`, see `$lib/dice/diceSpec`)
++ * into replay buttons instead of links.
++ */
++function diceMarkers(state: StateCore): void {
++  for (const token of state.tokens) {
++    const children = token.type === 'inline' ? token.children : null;
++    if (!children) continue;
++    for (let i = 0; i + 2 < children.length; i++) {
++      const open = children[i];
++      if (open.type !== 'link_open' || children[i + 2].type !== 'link_close') continue;
++      const spec = diceSpecFromHref(open.attrGet('href') ?? '');
++      if (!spec) continue;
++      open.type = 'chatto_dice';
++      open.tag = '';
++      open.nesting = 0;
++      open.meta = { spec };
++      children.splice(i + 1, 2);
++    }
++  }
++}
++
++function renderDiceMarker(tokens: Token[], idx: number): string {
++  const spec = escapeAttribute(tokens[idx].meta.spec);
++  const label = escapeAttribute(m('dice.replay'));
++  return `<button type="button" class="chatto-dice-replay cursor-pointer rounded px-0.5 hover:opacity-70" data-chatto-dice="${spec}" title="${label}" aria-label="${label}">🎲</button>`;
++}
++
+ async function ensureFenceLanguagesLoaded(languages: string[]): Promise<void> {
+   if (languages.length === 0) return;
+ 
+@@ -473,6 +502,8 @@ function initialize(): void {
+   // Recognize @mentions in the token tree after linkify, so URLs, links,
+   // code, and blockquotes keep their text. See `$lib/markdownMentions`.
+   md.use(mentionPlugin);
++  md.core.ruler.push('chatto_dice', diceMarkers);
++  md.renderer.rules.chatto_dice = renderDiceMarker;
+   md.renderer.rules.softbreak = renderChatLineBreak;
+   md.renderer.rules.hardbreak = renderChatLineBreak;
+   md.renderer.rules.table_open = () => '<div class="table-scroll" tabindex="0"><table>\n';
+diff --git a/apps/frontend/src/lib/ui/MarkdownHtml.svelte b/apps/frontend/src/lib/ui/MarkdownHtml.svelte
+index cd7818db9..65f5fbe77 100644
+--- a/apps/frontend/src/lib/ui/MarkdownHtml.svelte
++++ b/apps/frontend/src/lib/ui/MarkdownHtml.svelte
+@@ -26,6 +26,14 @@ This component also owns the copy action for rendered code blocks.
+   async function handleClick(event: MouseEvent) {
+     const target = event.target;
+     if (!(target instanceof Element)) return;
++    const dice = target.closest<HTMLButtonElement>('button[data-chatto-dice]');
++    if (dice) {
++      event.preventDefault();
++      event.stopPropagation();
++      const spec = dice.dataset.chattoDice ?? '';
++      void import('$lib/dice/dice.svelte').then(({ replayDice }) => replayDice(spec));
++      return;
++    }
+     const button = target.closest<HTMLButtonElement>('button[data-markdown-copy]');
+     if (!button) return;
+ 
+diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
+index 92e9c5828..595f3b79f 100644
+--- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
++++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
+@@ -62,6 +62,7 @@ thread IDs can change while the pane stays mounted.
+   import { isMessagePostedEvent } from '@chatto/client/timeline/timelineEvents';
+   import { ReadThroughTracker, type TimelineReadPosition } from './readThroughTracker';
+   import { clearTimelineViewport } from '$lib/state/room/timelineViewport';
++  import { DICE_MARKER_PREFIX } from '$lib/dice/diceSpec';
+ 
+   let {
+     roomId,
+@@ -299,6 +300,14 @@ thread IDs can change while the pane stays mounted.
+     const semantic = projectionEvent.event?.event;
+     if (semantic?.case !== 'messagePosted' || semantic.value.roomId !== roomId) return;
+     if ((semantic.value.threadRootEventId || null) !== threadRootEventId) return;
++    // Dice code loads only when a dice bot roll arrives; see $lib/dice.
++    if (semantic.value.bodyPlaintext?.includes(DICE_MARKER_PREFIX)) {
++      const event = projectionEvent.event;
++      const viewerId = stores.accountId;
++      void import('$lib/dice/dice.svelte').then(({ rollDiceForLiveMessage }) =>
++        rollDiceForLiveMessage(event, viewerId)
++      );
++    }
+ 
+     const actorId = projectionEvent.event?.actorId;
+     if (actorId) typingIndicator.removeTypingUser(actorId);
+-- 
+2.56.0
+

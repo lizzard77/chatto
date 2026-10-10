@@ -1,0 +1,1339 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Sat, 10 Oct 2026 12:53:34 +0200
+Subject: [PATCH] feat: annotate chat images with numbered pins and a
+ highlighter
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In the image viewer, participants can place numbered map pins and draw
+highlighter strokes on any image; tapping an annotation selects it with a
+bounding box, dragging moves it and the delete button or key removes it
+(own annotations, or any with message.manage). Each annotation is a thread reply to the
+image message whose body ends with a marker link
+[⌖](#chatto-annot:v1:<assetId>:[mv:<eventId>:]pin|hl:<coords>), so annotations
+are shared, live and removable. A move names the annotation it repositions;
+the latest move wins. Pins count up in posting order, every annotator gets
+their own colour, and the marker link is hidden when messages are rendered.
+
+Server: annotation replies do not auto-follow the thread for the poster or
+the image's author, so they cause no thread notifications by themselves.
+---
+ apps/frontend/messages/de-DE/annotations.json |  15 +
+ apps/frontend/messages/en-GB/annotations.json |  15 +
+ .../lib/annotations/AnnotationLayer.svelte    | 324 ++++++++++++++++++
+ .../lib/annotations/AnnotationToolbar.svelte  | 109 ++++++
+ .../src/lib/annotations/annotationSpec.ts     | 180 ++++++++++
+ .../annotations/imageAnnotations.svelte.ts    | 246 +++++++++++++
+ apps/frontend/src/lib/i18n/catalogSections.js |   1 +
+ apps/frontend/src/lib/markdown.ts             |  23 ++
+ .../src/lib/ui/AttachmentPreview.svelte       |  12 +-
+ apps/frontend/src/lib/ui/ZoomableImage.svelte |  39 ++-
+ .../chat/modals/AttachmentViewerModal.svelte  | 110 ++++++
+ cli/internal/core/image_annotations.go        |  14 +
+ cli/internal/core/messages.go                 |   3 +-
+ 13 files changed, 1081 insertions(+), 10 deletions(-)
+ create mode 100644 apps/frontend/messages/de-DE/annotations.json
+ create mode 100644 apps/frontend/messages/en-GB/annotations.json
+ create mode 100644 apps/frontend/src/lib/annotations/AnnotationLayer.svelte
+ create mode 100644 apps/frontend/src/lib/annotations/AnnotationToolbar.svelte
+ create mode 100644 apps/frontend/src/lib/annotations/annotationSpec.ts
+ create mode 100644 apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
+ create mode 100644 cli/internal/core/image_annotations.go
+
+diff --git a/apps/frontend/messages/de-DE/annotations.json b/apps/frontend/messages/de-DE/annotations.json
+new file mode 100644
+index 000000000..2fb5997df
+--- /dev/null
++++ b/apps/frontend/messages/de-DE/annotations.json
+@@ -0,0 +1,15 @@
++{
++  "annotations": {
++    "tools": "Anmerkungswerkzeuge",
++    "tool_view": "Verschieben und zoomen; Anmerkung antippen zum Auswählen und Ziehen",
++    "tool_pin": "Nummerierten Pin setzen",
++    "tool_highlight": "Textmarker",
++    "undo": "Meine letzte Anmerkung oder Verschiebung zurücknehmen",
++    "show": "Anmerkungen einblenden",
++    "hide": "Anmerkungen ausblenden",
++    "post_failed": "Die Anmerkung konnte nicht gespeichert werden.",
++    "undo_failed": "Die Anmerkung konnte nicht entfernt werden.",
++    "delete": "Ausgewählte Anmerkung löschen",
++    "delete_failed": "Die Anmerkung konnte nicht gelöscht werden."
++  }
++}
+diff --git a/apps/frontend/messages/en-GB/annotations.json b/apps/frontend/messages/en-GB/annotations.json
+new file mode 100644
+index 000000000..0d96404b9
+--- /dev/null
++++ b/apps/frontend/messages/en-GB/annotations.json
+@@ -0,0 +1,15 @@
++{
++  "annotations": {
++    "tools": "Annotation tools",
++    "tool_view": "Move and zoom; tap an annotation to select and drag it",
++    "tool_pin": "Place a numbered pin",
++    "tool_highlight": "Highlighter",
++    "undo": "Remove or undo my last annotation",
++    "show": "Show annotations",
++    "hide": "Hide annotations",
++    "post_failed": "The annotation could not be saved.",
++    "undo_failed": "The annotation could not be removed.",
++    "delete": "Delete selected annotation",
++    "delete_failed": "The annotation could not be deleted."
++  }
++}
+diff --git a/apps/frontend/src/lib/annotations/AnnotationLayer.svelte b/apps/frontend/src/lib/annotations/AnnotationLayer.svelte
+new file mode 100644
+index 000000000..0103f8a54
+--- /dev/null
++++ b/apps/frontend/src/lib/annotations/AnnotationLayer.svelte
+@@ -0,0 +1,324 @@
++<!-- @component
++SVG layer over a zoomable image. It shares the image's box and transform, so
++annotations stay on their spot while the viewer zooms and pans. With a drawing
++tool active it takes the pointer and reports new shapes in normalized image
++coordinates (0…1).
++
++Tapping or clicking an annotation selects it and shows a bounding box with
++corner anchors; dragging it (or its box) moves it, with any tool. Only the
++highlighter keeps drawing over unselected highlights. Elsewhere the image pans
++as usual.
++-->
++<script lang="ts">
++  import type { Annotation, AnnotationShape, AnnotationTool, Point } from './annotationSpec';
++  import { simplifyStroke, translateShape } from './annotationSpec';
++
++  let {
++    annotations,
++    colors,
++    viewerColor,
++    width,
++    height,
++    pxPerUnit,
++    transform,
++    tool,
++    onpin,
++    onstroke,
++    onmove,
++    selected = $bindable(null)
++  }: {
++    annotations: Annotation[];
++    colors: Map<string, string>;
++    viewerColor: string;
++    /** Natural size of the shown image rendition. */
++    width: number;
++    height: number;
++    /** Screen pixels per image pixel at the current zoom. */
++    pxPerUnit: number;
++    /** The CSS transform of the image. */
++    transform: string;
++    tool: AnnotationTool;
++    onpin: (at: Point) => void;
++    onstroke: (points: Point[]) => void;
++    onmove: (annotation: Annotation, shape: AnnotationShape) => void;
++    /** Event ID of the selected annotation; the owner deletes it. */
++    selected?: string | null;
++  } = $props();
++
++  let svg: SVGSVGElement;
++  let drawing = $state<Point[] | null>(null);
++  let pressed: { x: number; y: number; id: number } | null = null;
++  /** The annotation under the pointer since pointerdown, and how far it moved. */
++  let dragging = $state<{ index: number; start: Point; dx: number; dy: number } | null>(null);
++
++  const drawingTool = $derived(tool === 'pin' || tool === 'hl');
++
++  /** Screen-sized things (pins, frames) are scaled by this to stay the same size at any zoom. */
++  const unit = $derived(pxPerUnit > 0 ? 1 / pxPerUnit : 1);
++  /** Highlighter width belongs to the image: 2.5 % of its shorter side. */
++  const strokeWidth = $derived(Math.min(width, height) * 0.025);
++
++  /** Pins count up in posting order; entry i belongs to annotations[i]. */
++  const pinNumbers = $derived.by(() => {
++    let next = 0;
++    return annotations.map((annotation) => (annotation.type === 'pin' ? ++next : 0));
++  });
++
++  const selectedIndex = $derived(
++    selected ? annotations.findIndex((a) => a.eventId === selected) : -1
++  );
++
++  function toImage(event: PointerEvent, onImage = true): Point | null {
++    const matrix = svg.getScreenCTM();
++    if (!matrix || !width || !height) return null;
++    const p = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
++    if (onImage && (p.x < 0 || p.y < 0 || p.x > width || p.y > height)) return null;
++    return { x: p.x / width, y: p.y / height };
++  }
++
++  /** The shape to draw: a dragged annotation follows the pointer. */
++  function shown(annotation: Annotation, index: number): Annotation {
++    if (dragging?.index !== index) return annotation;
++    return { ...annotation, ...translateShape(annotation, dragging.dx, dragging.dy) };
++  }
++
++  /** Bounding box in image pixels, padded by a few screen pixels. */
++  function bounds(annotation: Annotation) {
++    const pad = 6 * unit;
++    if (annotation.type === 'pin') {
++      const x = annotation.at.x * width;
++      const y = annotation.at.y * height;
++      return {
++        x: x - 16 * unit - pad,
++        y: y - 41 * unit - pad,
++        w: 32 * unit + 2 * pad,
++        h: 43 * unit + 2 * pad
++      };
++    }
++    const xs = annotation.points.map((p) => p.x * width);
++    const ys = annotation.points.map((p) => p.y * height);
++    const half = strokeWidth / 2 + pad;
++    const x = Math.min(...xs) - half;
++    const y = Math.min(...ys) - half;
++    return { x, y, w: Math.max(...xs) + half - x, h: Math.max(...ys) + half - y };
++  }
++
++  function pointerdown(event: PointerEvent) {
++    if (event.pointerType === 'mouse' && event.button !== 0) return;
++    const grabbed = (event.target as Element).closest('[data-annotation]');
++    const index = grabbed ? Number(grabbed.getAttribute('data-annotation')) : -1;
++    const annotation = annotations[index];
++    // The highlighter draws over highlights that are not selected.
++    const grab =
++      annotation?.eventId &&
++      !(tool === 'hl' && annotation.eventId !== selected && annotation.type === 'hl');
++    if (grab) {
++      const start = toImage(event, false);
++      if (!start) return;
++      event.stopPropagation();
++      event.preventDefault();
++      svg.setPointerCapture(event.pointerId);
++      pressed = { x: event.clientX, y: event.clientY, id: event.pointerId };
++      dragging = { index, start, dx: 0, dy: 0 };
++      return;
++    }
++    selected = null;
++    // Without a drawing tool the stage pans and zooms (the event reaches it).
++    if (!drawingTool) return;
++    event.stopPropagation();
++    event.preventDefault();
++    const point = toImage(event);
++    if (!point) return;
++    svg.setPointerCapture(event.pointerId);
++    pressed = { x: event.clientX, y: event.clientY, id: event.pointerId };
++    if (tool === 'hl') drawing = [point];
++  }
++
++  function pointermove(event: PointerEvent) {
++    if (pressed?.id !== event.pointerId) return;
++    if (dragging) {
++      event.stopPropagation();
++      const point = toImage(event, false);
++      if (point)
++        dragging = { ...dragging, dx: point.x - dragging.start.x, dy: point.y - dragging.start.y };
++      return;
++    }
++    if (!drawing) return;
++    event.stopPropagation();
++    const point = toImage(event);
++    if (point) drawing = [...drawing, point];
++  }
++
++  function pointerup(event: PointerEvent) {
++    if (pressed?.id !== event.pointerId) return;
++    event.stopPropagation();
++    const moved = Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y);
++    pressed = null;
++    if (dragging) {
++      const annotation = annotations[dragging.index];
++      if (annotation && moved >= 4) {
++        onmove(annotation, translateShape(annotation, dragging.dx, dragging.dy));
++      }
++      if (annotation) selected = annotation.eventId;
++      dragging = null;
++      return;
++    }
++    if (tool === 'pin' && moved < 8) {
++      const point = toImage(event);
++      if (point) onpin(point);
++    } else if (tool === 'hl' && drawing && drawing.length > 1) {
++      onstroke(simplifyStroke(drawing));
++    }
++    drawing = null;
++  }
++
++  function cancel() {
++    pressed = null;
++    drawing = null;
++    dragging = null;
++  }
++
++  function path(points: Point[]): string {
++    return points
++      .map((p, i) => `${i ? 'L' : 'M'}${(p.x * width).toFixed(1)} ${(p.y * height).toFixed(1)}`)
++      .join('');
++  }
++</script>
++
++{#snippet highlight(points: Point[], color: string, grab?: number)}
++  <!-- Dark halo first, then the colour: readable on bright and dark images.
++       The halo is also what a pointer grabs. -->
++  <path
++    data-annotation={grab}
++    class:annotation-grab={grab !== undefined}
++    d={path(points)}
++    fill="none"
++    stroke="black"
++    stroke-opacity="0.35"
++    stroke-width={strokeWidth + 4 * unit}
++    stroke-linecap="round"
++    stroke-linejoin="round"
++  />
++  <path
++    d={path(points)}
++    fill="none"
++    stroke={color}
++    stroke-opacity="0.55"
++    stroke-width={strokeWidth}
++    stroke-linecap="round"
++    stroke-linejoin="round"
++    pointer-events="none"
++  />
++{/snippet}
++
++<svg
++  bind:this={svg}
++  viewBox={`0 0 ${width || 1} ${height || 1}`}
++  preserveAspectRatio="xMidYMid meet"
++  class="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
++  class:annotation-drawing={drawingTool || selected !== null}
++  style:transform
++  style:cursor={drawingTool ? 'crosshair' : undefined}
++  role="presentation"
++  onpointerdown={pointerdown}
++  onpointermove={pointermove}
++  onpointerup={pointerup}
++  onpointercancel={cancel}
++  ondblclick={(event) => (drawingTool || dragging) && event.stopPropagation()}
++>
++  {#each annotations as original, index (original.eventId || original.createdAt)}
++    {@const annotation = shown(original, index)}
++    {@const color = colors.get(annotation.authorId) ?? viewerColor}
++    {@const grab = annotation.eventId ? index : undefined}
++    {#if annotation.type === 'hl'}
++      {@render highlight(annotation.points, color, grab)}
++    {:else}
++      <g
++        transform={`translate(${annotation.at.x * width} ${annotation.at.y * height}) scale(${unit})`}
++        opacity={annotation.eventId ? 1 : 0.6}
++        data-annotation={grab}
++        class:annotation-grab={grab !== undefined}
++      >
++        <!-- Map pin with its tip on the point. -->
++        <path
++          d="M0 0 C-4 -9 -14 -14 -14 -25 A14 14 0 1 1 14 -25 C14 -14 4 -9 0 0 Z"
++          fill={color}
++          stroke="white"
++          stroke-width="2.5"
++          style="filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.6))"
++        />
++        <text
++          y="-25"
++          text-anchor="middle"
++          dominant-baseline="central"
++          font-size="15"
++          font-weight="700"
++          fill="white"
++          stroke="black"
++          stroke-width="3"
++          paint-order="stroke"
++          font-family="system-ui, sans-serif">{pinNumbers[index]}</text
++        >
++      </g>
++    {/if}
++  {/each}
++  {#if selectedIndex >= 0}
++    {@const box = bounds(shown(annotations[selectedIndex], selectedIndex))}
++    {@const anchor = 7 * unit}
++    <!-- Selection frame: the whole box can be dragged. -->
++    <g data-annotation={selectedIndex} class="annotation-grab annotation-selection">
++      <rect
++        x={box.x}
++        y={box.y}
++        width={box.w}
++        height={box.h}
++        fill="white"
++        fill-opacity="0.06"
++        stroke="black"
++        stroke-opacity="0.6"
++        stroke-width={3 * unit}
++      />
++      <rect
++        x={box.x}
++        y={box.y}
++        width={box.w}
++        height={box.h}
++        fill="none"
++        stroke="white"
++        stroke-width={1.5 * unit}
++        stroke-dasharray={`${5 * unit} ${4 * unit}`}
++      />
++      {#each [[box.x, box.y], [box.x + box.w, box.y], [box.x, box.y + box.h], [box.x + box.w, box.y + box.h]] as [cx, cy], corner (corner)}
++        <rect
++          x={cx - anchor / 2}
++          y={cy - anchor / 2}
++          width={anchor}
++          height={anchor}
++          fill="white"
++          stroke="black"
++          stroke-width={1.5 * unit}
++        />
++      {/each}
++    </g>
++  {/if}
++  {#if drawing && drawing.length > 1}
++    {@render highlight(drawing, viewerColor)}
++  {/if}
++</svg>
++
++<style>
++  .annotation-drawing {
++    pointer-events: auto;
++    touch-action: none;
++  }
++
++  .annotation-grab {
++    pointer-events: auto;
++    touch-action: none;
++    cursor: grab;
++  }
++
++  .annotation-selection {
++    cursor: move;
++  }
++</style>
+diff --git a/apps/frontend/src/lib/annotations/AnnotationToolbar.svelte b/apps/frontend/src/lib/annotations/AnnotationToolbar.svelte
+new file mode 100644
+index 000000000..8870a69fc
+--- /dev/null
++++ b/apps/frontend/src/lib/annotations/AnnotationToolbar.svelte
+@@ -0,0 +1,109 @@
++<!-- @component
++Annotation controls in the image viewer's bottom bar: tool choice, undo of the
++viewer's last annotation, show/hide, and a colour legend of the annotators.
++-->
++<script lang="ts">
++  import { m } from '$lib/i18n/messages';
++  import type { AnnotationTool } from './annotationSpec';
++
++  let {
++    tool = $bindable(),
++    visible = $bindable(),
++    canAnnotate,
++    canUndo,
++    canDelete,
++    authors,
++    onundo,
++    ondelete
++  }: {
++    tool: AnnotationTool;
++    visible: boolean;
++    canAnnotate: boolean;
++    canUndo: boolean;
++    authors: { id: string; name: string; color: string }[];
++    onundo: () => void;
++    /** Deletes the selected annotation. */
++    canDelete: boolean;
++    ondelete: () => void;
++  } = $props();
++
++  const tools = $derived([
++    { value: 'view', icon: 'icon-[lucide--hand]', label: m('annotations.tool_view') },
++    { value: 'pin', icon: 'icon-[lucide--map-pin]', label: m('annotations.tool_pin') },
++    { value: 'hl', icon: 'icon-[lucide--highlighter]', label: m('annotations.tool_highlight') }
++  ] satisfies { value: AnnotationTool; icon: string; label: string }[]);
++</script>
++
++<div
++  class="flex flex-wrap items-center justify-center gap-1 sm:ms-3 sm:border-s sm:border-white/25 sm:ps-3"
++>
++  {#if canAnnotate}
++    <div class="flex items-center gap-1" role="radiogroup" aria-label={m('annotations.tools')}>
++      {#each tools as option (option.value)}
++        <button
++          type="button"
++          role="radio"
++          aria-checked={tool === option.value}
++          class={['icon-action rounded text-white', tool === option.value && 'bg-white/25']}
++          aria-label={option.label}
++          title={option.label}
++          onclick={() => {
++            tool = option.value;
++            if (option.value !== 'view') visible = true;
++          }}
++        >
++          <span class={['iconify text-xl', option.icon]} aria-hidden="true"></span>
++        </button>
++      {/each}
++    </div>
++    <button
++      type="button"
++      class="icon-action text-white"
++      aria-label={m('annotations.undo')}
++      title={m('annotations.undo')}
++      disabled={!canUndo}
++      onclick={onundo}
++    >
++      <span class="iconify icon-[uil--redo] -scale-x-100 text-xl" aria-hidden="true"></span>
++    </button>
++    <button
++      type="button"
++      class="icon-action text-white"
++      aria-label={m('annotations.delete')}
++      title={m('annotations.delete')}
++      disabled={!canDelete}
++      onclick={ondelete}
++    >
++      <span class="iconify icon-[lucide--trash-2] text-xl" aria-hidden="true"></span>
++    </button>
++  {/if}
++  {#if authors.length}
++    <button
++      type="button"
++      class="icon-action text-white"
++      aria-label={visible ? m('annotations.hide') : m('annotations.show')}
++      title={visible ? m('annotations.hide') : m('annotations.show')}
++      aria-pressed={!visible}
++      onclick={() => {
++        visible = !visible;
++        if (!visible) tool = 'view';
++      }}
++    >
++      <span
++        class={['iconify text-xl', visible ? 'icon-[uil--eye]' : 'icon-[uil--eye-slash]']}
++        aria-hidden="true"
++      ></span>
++    </button>
++    <ul class="flex max-w-64 items-center gap-2 overflow-hidden text-xs">
++      {#each authors as author (author.id)}
++        <li class="flex min-w-0 items-center gap-1" title={author.name}>
++          <span
++            class="size-2.5 shrink-0 rounded-full ring-1 ring-white/70"
++            style:background={author.color}
++          ></span>
++          <span class="truncate">{author.name}</span>
++        </li>
++      {/each}
++    </ul>
++  {/if}
++</div>
+diff --git a/apps/frontend/src/lib/annotations/annotationSpec.ts b/apps/frontend/src/lib/annotations/annotationSpec.ts
+new file mode 100644
+index 000000000..5ae32de3b
+--- /dev/null
++++ b/apps/frontend/src/lib/annotations/annotationSpec.ts
+@@ -0,0 +1,180 @@
++/**
++ * Image annotations stored as messages.
++ *
++ * Chatto messages carry no structured metadata, so every annotation is a reply
++ * in the thread of the image message whose body ends with a marker link:
++ *
++ *   📍 3 [⌖](#chatto-annot:v1:<assetId>:pin:<x>,<y>)
++ *   🖍️ [⌖](#chatto-annot:v1:<assetId>:hl:<x>,<y>;<x>,<y>;…)
++ *
++ * Moving an annotation posts its new shape with the event ID of the original;
++ * the latest move wins, and retracting it restores the previous position:
++ *
++ *   ↔️ 📍 3 [⌖](#chatto-annot:v1:<assetId>:mv:<eventId>:pin:<x>,<y>)
++ *
++ * Coordinates are integers 0…10000 relative to the image width and height, so
++ * they do not depend on which rendition of the image is shown. Pin numbers are
++ * not stored: pins count up in the order they were posted.
++ */
++
++export const ANNOTATION_MARKER_PREFIX = '#chatto-annot:v1:';
++
++/** Coordinate resolution: 0…SCALE maps to 0…1 of the image. */
++const SCALE = 10000;
++/** Highlighter strokes keep at most this many points after simplification. */
++export const MAX_STROKE_POINTS = 400;
++
++export type Point = { x: number; y: number };
++
++/** Viewer tool: look (pan and zoom), place pins, or highlight. Any tool moves annotations. */
++export type AnnotationTool = 'view' | 'pin' | 'hl';
++
++export type AnnotationShape = { type: 'pin'; at: Point } | { type: 'hl'; points: Point[] };
++
++export type Annotation = AnnotationShape & {
++  eventId: string;
++  authorId: string;
++  createdAt: string;
++};
++
++const ID = '[A-Za-z0-9_-]{1,64}';
++const MARKER_IN_BODY = new RegExp(
++  `\\]\\(#chatto-annot:v1:(${ID}):(?:mv:(${ID}):)?(pin|hl):([0-9,;]{3,6000})\\)`
++);
++const HREF = new RegExp(`^#chatto-annot:v1:${ID}:(?:mv:${ID}:)?(?:pin|hl):[0-9,;]{3,6000}$`);
++
++const clampUnit = (value: number) => Math.min(1, Math.max(0, value));
++const encodePoint = (p: Point) =>
++  `${Math.round(clampUnit(p.x) * SCALE)},${Math.round(clampUnit(p.y) * SCALE)}`;
++
++function decodePoint(text: string): Point | null {
++  const [x, y, extra] = text.split(',');
++  if (extra !== undefined || !/^\d{1,5}$/.test(x ?? '') || !/^\d{1,5}$/.test(y ?? '')) return null;
++  const px = Number(x) / SCALE;
++  const py = Number(y) / SCALE;
++  return px <= 1 && py <= 1 ? { x: px, y: py } : null;
++}
++
++/** Whether a link href is an annotation marker (rendered invisibly). */
++export function isAnnotationHref(href: string): boolean {
++  return HREF.test(href);
++}
++
++/**
++ * Marker link for one annotation of an image asset. With `movedEventId` it
++ * moves that earlier annotation to `shape` instead of adding one.
++ */
++export function annotationMarker(
++  assetId: string,
++  shape: AnnotationShape,
++  movedEventId?: string
++): string {
++  const data =
++    shape.type === 'pin' ? encodePoint(shape.at) : shape.points.map(encodePoint).join(';');
++  const move = movedEventId ? `mv:${movedEventId}:` : '';
++  return `[⌖](${ANNOTATION_MARKER_PREFIX}${assetId}:${move}${shape.type}:${data})`;
++}
++
++export type ParsedAnnotation = {
++  assetId: string;
++  shape: AnnotationShape;
++  /** Set when the message moves an earlier annotation. */
++  movedEventId: string | null;
++};
++
++/** The annotation of a message body, or null when it has none. */
++export function parseAnnotation(body: string | null | undefined): ParsedAnnotation | null {
++  if (!body || !body.includes(ANNOTATION_MARKER_PREFIX)) return null;
++  const match = MARKER_IN_BODY.exec(body);
++  if (!match) return null;
++  const [, assetId, moved, type, data] = match;
++  const movedEventId = moved ?? null;
++  if (type === 'pin') {
++    const at = decodePoint(data);
++    return at ? { assetId, shape: { type: 'pin', at }, movedEventId } : null;
++  }
++  const points = data.split(';').map(decodePoint);
++  if (points.length < 2 || points.length > MAX_STROKE_POINTS || points.some((p) => !p)) return null;
++  return { assetId, shape: { type: 'hl', points: points as Point[] }, movedEventId };
++}
++
++/** The shape moved by an offset in normalized coordinates, kept on the image. */
++export function translateShape(shape: AnnotationShape, dx: number, dy: number): AnnotationShape {
++  const move = (p: Point) => ({ x: clampUnit(p.x + dx), y: clampUnit(p.y + dy) });
++  return shape.type === 'pin'
++    ? { type: 'pin', at: move(shape.at) }
++    : { type: 'hl', points: shape.points.map(move) };
++}
++
++/** Ramer–Douglas–Peucker simplification in normalized image coordinates. */
++export function simplifyStroke(points: Point[], tolerance = 0.002): Point[] {
++  if (points.length <= 2) return points;
++  const keep = new Uint8Array(points.length);
++  keep[0] = keep[points.length - 1] = 1;
++  const stack: [number, number][] = [[0, points.length - 1]];
++  while (stack.length) {
++    const [first, last] = stack.pop()!;
++    const a = points[first];
++    const b = points[last];
++    const length = Math.hypot(b.x - a.x, b.y - a.y) || 1e-9;
++    let worst = -1;
++    let worstDistance = tolerance;
++    for (let i = first + 1; i < last; i++) {
++      const p = points[i];
++      const distance = Math.abs((b.x - a.x) * (a.y - p.y) - (a.x - p.x) * (b.y - a.y)) / length;
++      if (distance > worstDistance) {
++        worst = i;
++        worstDistance = distance;
++      }
++    }
++    if (worst > 0) {
++      keep[worst] = 1;
++      stack.push([first, worst], [worst, last]);
++    }
++  }
++  const simplified = points.filter((_, i) => keep[i]);
++  if (simplified.length <= MAX_STROKE_POINTS) return simplified;
++  const step = simplified.length / MAX_STROKE_POINTS;
++  return Array.from({ length: MAX_STROKE_POINTS }, (_, i) => simplified[Math.floor(i * step)]);
++}
++
++/** Distinct, saturated colours that read on light and dark images. */
++export const ANNOTATION_COLORS = [
++  '#e6194b',
++  '#3cb44b',
++  '#ffe119',
++  '#4363d8',
++  '#f58231',
++  '#911eb4',
++  '#42d4f4',
++  '#f032e6',
++  '#bfef45',
++  '#fabed4',
++  '#469990',
++  '#9a6324'
++] as const;
++
++function hash(text: string): number {
++  let h = 2166136261;
++  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
++  return h >>> 0;
++}
++
++/**
++ * Colour per user. Each user prefers the colour their ID hashes to, so it is
++ * the same on every image; when two users on one image collide, the later ID
++ * in sort order moves to the next free colour.
++ */
++export function assignColors(userIds: Iterable<string>): Map<string, string> {
++  const colors = new Map<string, string>();
++  const taken = new Set<number>();
++  for (const id of [...new Set(userIds)].sort()) {
++    let index = hash(id) % ANNOTATION_COLORS.length;
++    for (let tries = 0; taken.has(index) && tries < ANNOTATION_COLORS.length; tries++) {
++      index = (index + 1) % ANNOTATION_COLORS.length;
++    }
++    taken.add(index);
++    colors.set(id, ANNOTATION_COLORS[index]);
++  }
++  return colors;
++}
+diff --git a/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts b/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
+new file mode 100644
+index 000000000..7958a46c7
+--- /dev/null
++++ b/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
+@@ -0,0 +1,246 @@
++/**
++ * Annotations of one image in the attachment viewer: reads them from the
++ * thread of the image message, keeps them live, and posts or retracts the
++ * viewer's own. See `annotationSpec.ts` for the message format.
++ */
++
++// Maps, sets and dates here are short-lived locals of getters, never reactive state.
++/* eslint-disable svelte/prefer-svelte-reactivity */
++import { createMessageAPI } from '@chatto/client/api/messages';
++import type { MessagesStore } from '@chatto/client/room/messages/MessagesStore';
++import type { ServerStateStore } from '@chatto/client/server/store';
++import { isMessagePostedEvent } from '@chatto/client/timeline/timelineEvents';
++import { serverConnectionManager, serverRegistry } from '$lib/client';
++import {
++  annotationMarker,
++  assignColors,
++  parseAnnotation,
++  type Annotation,
++  type AnnotationShape
++} from './annotationSpec';
++
++/** Older thread pages loaded at most when the viewer opens. */
++const MAX_PAGES = 20;
++
++export type AnnotationTarget = {
++  serverId: string;
++  roomId: string;
++  /** The message that carries the image. */
++  eventId: string;
++  assetId: string;
++};
++
++type Pending = {
++  shape: AnnotationShape;
++  marker: string;
++  createdAt: string;
++  movedEventId: string | null;
++};
++
++/** One annotation message of this image as posted (an annotation or a move). */
++type Entry = {
++  eventId: string;
++  authorId: string;
++  createdAt: string;
++  shape: AnnotationShape;
++  movedEventId: string | null;
++  marker: string;
++};
++
++export class ImageAnnotations {
++  readonly #target: AnnotationTarget;
++  readonly #stores: ServerStateStore | undefined;
++  readonly #thread: MessagesStore | null = null;
++  readonly #threadRootEventId: string;
++  #disposed = false;
++  // Raw: entries are compared by identity, which a deep $state proxy would break.
++  #pending = $state.raw<Pending[]>([]);
++  loading = $state(true);
++
++  constructor(target: AnnotationTarget) {
++    this.#target = target;
++    this.#stores = serverRegistry.tryGetStore(target.serverId);
++    // An image inside a thread is annotated in that thread; otherwise the
++    // image message becomes the thread root.
++    const image = this.#stores?.rooms.messages(target.roomId).getEventById(target.eventId);
++    this.#threadRootEventId =
++      (image && isMessagePostedEvent(image.event) ? image.event.threadRootEventId : null) ||
++      target.eventId;
++    if (!this.#stores) return;
++    this.#thread = this.#stores.rooms.thread(target.roomId, this.#threadRootEventId);
++    this.#stores.rooms.retainThread(target.roomId, this.#threadRootEventId, this.#thread);
++    void this.#loadAll();
++  }
++
++  async #loadAll(): Promise<void> {
++    const thread = this.#thread!;
++    try {
++      await thread.restoreLatestWindow();
++      for (let page = 0; page < MAX_PAGES && !thread.hasReachedStart && !this.#disposed; page++) {
++        await thread.loadMore();
++      }
++    } catch (error) {
++      console.warn('[annotations] thread unavailable:', error);
++    } finally {
++      this.loading = false;
++    }
++  }
++
++  dispose(): void {
++    this.#disposed = true;
++    if (this.#stores && this.#thread) {
++      this.#stores.rooms.releaseThread(this.#target.roomId, this.#threadRootEventId, this.#thread);
++    }
++  }
++
++  get viewerId(): string | null {
++    return this.#stores?.accountId ?? null;
++  }
++
++  /** Whether the viewer may add annotations (needs thread replies in this room). */
++  get canAnnotate(): boolean {
++    if (!this.viewerId || !this.#thread) return false;
++    const root = this.#thread.threadEvents.find((e) => e.id === this.#threadRootEventId);
++    return !root || !isMessagePostedEvent(root.event) || root.event.canReplyInThread !== false;
++  }
++
++  /** Annotation messages of this image in posting order, then unconfirmed ones. */
++  get #entries(): Entry[] {
++    const posted: Entry[] = [];
++    for (const entry of this.#thread?.threadEvents ?? []) {
++      const event = entry.event;
++      if (!isMessagePostedEvent(event) || event.deletedAt || !entry.actorId) continue;
++      const parsed = parseAnnotation(event.body);
++      if (!parsed || parsed.assetId !== this.#target.assetId) continue;
++      posted.push({
++        eventId: entry.id,
++        authorId: entry.actorId,
++        createdAt: entry.createdAt,
++        shape: parsed.shape,
++        movedEventId: parsed.movedEventId,
++        marker: annotationMarker(parsed.assetId, parsed.shape, parsed.movedEventId ?? undefined)
++      });
++    }
++    posted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
++    const confirmed = new Set(posted.map((e) => e.marker));
++    const pending = this.#pending
++      .filter((p) => !confirmed.has(p.marker))
++      .map((p) => ({ ...p, eventId: '', authorId: this.viewerId ?? '' }));
++    return [...posted, ...pending];
++  }
++
++  /**
++   * Annotations in posting order, each at its latest position. Colour and pin
++   * number stay with the original annotation, whoever moved it.
++   */
++  get annotations(): Annotation[] {
++    const annotations: Annotation[] = [];
++    const byEventId = new Map<string, number>();
++    for (const entry of this.#entries) {
++      if (entry.movedEventId) {
++        const index = byEventId.get(entry.movedEventId);
++        const original = index === undefined ? undefined : annotations[index];
++        if (original && original.type === entry.shape.type) {
++          annotations[index!] = { ...original, ...entry.shape };
++        }
++        continue;
++      }
++      if (entry.eventId) byEventId.set(entry.eventId, annotations.length);
++      annotations.push({
++        ...entry.shape,
++        eventId: entry.eventId,
++        authorId: entry.authorId,
++        createdAt: entry.createdAt
++      });
++    }
++    return annotations;
++  }
++
++  /** Whether the viewer may delete this annotation: their own, or any as a moderator. */
++  canDelete(eventId: string | null): boolean {
++    const annotation = eventId ? this.annotations.find((a) => a.eventId === eventId) : null;
++    if (!annotation || !this.viewerId) return false;
++    if (annotation.authorId === this.viewerId) return true;
++    const state = this.#stores?.projection.rooms.get(this.#target.roomId)?.viewerState;
++    return !!state?.permissions.some((p) => p.permission === 'message.manage' && p.granted);
++  }
++
++  /** Delete an annotation; its moves are ignored from then on. */
++  async delete(eventId: string): Promise<void> {
++    await serverConnectionManager
++      .getClient(this.#target.serverId)
++      .getAPI(createMessageAPI)
++      .deleteMessage(this.#target.roomId, eventId);
++    this.#thread?.applyLocalMessageDeletion(eventId);
++  }
++
++  /** Whether the viewer has a posted annotation or move to take back. */
++  get canUndo(): boolean {
++    return this.#entries.some((e) => e.eventId && e.authorId === this.viewerId);
++  }
++
++  /** One colour per annotating user (and the viewer, for drawing previews). */
++  get colors(): Map<string, string> {
++    const ids = this.annotations.map((a) => a.authorId);
++    if (this.viewerId) ids.push(this.viewerId);
++    return assignColors(ids);
++  }
++
++  /** Annotating users with their colour, for the legend. */
++  get authors(): { id: string; name: string; color: string }[] {
++    const names = new Map<string, string>();
++    for (const entry of this.#thread?.threadEvents ?? []) {
++      if (entry.actorId && entry.actor) names.set(entry.actorId, entry.actor.displayName);
++    }
++    const colors = this.colors;
++    return [...new Set(this.annotations.map((a) => a.authorId))].map((id) => ({
++      id,
++      name: names.get(id) ?? '…',
++      color: colors.get(id) ?? '#888'
++    }));
++  }
++
++  /** Post one annotation as a thread reply; `label` is the visible text. */
++  add(shape: AnnotationShape, label: string): Promise<void> {
++    return this.#post(shape, label, null);
++  }
++
++  /** Move a posted annotation (anyone's) to a new shape. */
++  move(annotation: Annotation, shape: AnnotationShape, label: string): Promise<void> {
++    if (!annotation.eventId) return Promise.resolve();
++    return this.#post(shape, label, annotation.eventId);
++  }
++
++  async #post(shape: AnnotationShape, label: string, movedEventId: string | null) {
++    const marker = annotationMarker(this.#target.assetId, shape, movedEventId ?? undefined);
++    const pending: Pending = { shape, marker, createdAt: new Date().toISOString(), movedEventId };
++    this.#pending = [...this.#pending, pending];
++    try {
++      const { event } = await serverConnectionManager
++        .getClient(this.#target.serverId)
++        .getAPI(createMessageAPI)
++        .createMessage({
++          roomId: this.#target.roomId,
++          body: `${label} ${marker}`,
++          threadRootEventId: this.#threadRootEventId
++        });
++      // Show the confirmed message now; the realtime echo is deduplicated. A
++      // placeholder kept longer would reappear if the annotation is deleted.
++      if (event) this.#thread?.ingestEvent(event);
++    } finally {
++      this.#pending = this.#pending.filter((p) => p !== pending);
++    }
++  }
++
++  /** Retract the viewer's most recent annotation or move on this image. */
++  async undoLast(): Promise<boolean> {
++    const last = this.#entries.filter((e) => e.eventId && e.authorId === this.viewerId).at(-1);
++    if (!last) return false;
++    await serverConnectionManager
++      .getClient(this.#target.serverId)
++      .getAPI(createMessageAPI)
++      .deleteMessage(this.#target.roomId, last.eventId);
++    this.#thread?.applyLocalMessageDeletion(last.eventId);
++    return true;
++  }
++}
+diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
+index eaad03736..854597cd4 100644
+--- a/apps/frontend/src/lib/i18n/catalogSections.js
++++ b/apps/frontend/src/lib/i18n/catalogSections.js
+@@ -1,6 +1,7 @@
+ export const catalogSections = /** @type {const} */ ([
+   'add_server',
+   'admin',
++  'annotations',
+   'auth',
+   'chat',
+   'common',
+diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
+index 7a39c36a3..353823f93 100644
+--- a/apps/frontend/src/lib/markdown.ts
++++ b/apps/frontend/src/lib/markdown.ts
+@@ -1,4 +1,5 @@
+ import MarkdownIt from 'markdown-it';
++import { isAnnotationHref } from '$lib/annotations/annotationSpec';
+ import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
+ import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
+ import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
+@@ -395,6 +396,27 @@ function renderChatLineBreak(tokens: Token[], idx: number): string {
+   return lineAfterBreakIsWhitespaceOnly(tokens, idx) ? '' : '<br>\n';
+ }
+ 
++/**
++ * Drop image annotation marker links (`$lib/annotations/annotationSpec`); the
++ * annotation itself is drawn in the image viewer.
++ */
++function hideAnnotationMarkers(state: StateCore): void {
++  for (const token of state.tokens) {
++    const children = token.type === 'inline' ? token.children : null;
++    if (!children) continue;
++    for (let i = 0; i + 2 < children.length; i++) {
++      if (
++        children[i].type === 'link_open' &&
++        children[i + 2].type === 'link_close' &&
++        isAnnotationHref(children[i].attrGet('href') ?? '')
++      ) {
++        children.splice(i, 3);
++        i--;
++      }
++    }
++  }
++}
++
+ function renderParagraphOpen(tokens: Token[], idx: number): string {
+   return tokens[idx].hidden ? '<span class="list-item-content">' : '<p>';
+ }
+@@ -486,6 +508,7 @@ function initialize(): void {
+ 
+   // Disable unwanted syntax - only keep what we explicitly want
+   md.disable([...DISABLED_RULES]);
++  md.core.ruler.push('chatto_annotations', hideAnnotationMarkers);
+ 
+   // Restrict `*` and `_` emphasis to word boundaries. Prevents intraword
+   // emphasis (e.g. `snake_case`, `foo*bar*baz`) and emphasis between
+diff --git a/apps/frontend/src/lib/ui/AttachmentPreview.svelte b/apps/frontend/src/lib/ui/AttachmentPreview.svelte
+index 05b5821cd..8c2736192 100644
+--- a/apps/frontend/src/lib/ui/AttachmentPreview.svelte
++++ b/apps/frontend/src/lib/ui/AttachmentPreview.svelte
+@@ -6,7 +6,8 @@ component on selection changes so playback and consent cannot cross items.
+   import { scale } from 'svelte/transition';
+   import { expoOutTransition } from './motion';
+   import { m } from '$lib/i18n/messages';
+-  import ZoomableImage from './ZoomableImage.svelte';
++  import type { Snippet } from 'svelte';
++  import ZoomableImage, { type ZoomableImageOverlay } from './ZoomableImage.svelte';
+   import LoadingFog from './LoadingFog.svelte';
+   import MarkdownHtml from './MarkdownHtml.svelte';
+   import type { MessageAttachmentView } from '@chatto/client/timeline/messageAttachments';
+@@ -22,7 +23,9 @@ component on selection changes so playback and consent cannot cross items.
+     zoomable = false,
+     pdfViewerEnabled = typeof navigator !== 'undefined' && navigator.pdfViewerEnabled === true,
+     onpreview,
+-    onerror
++    onerror,
++    imageOverlay,
++    imageToolbar
+   }: {
+     item: MessageAttachmentView;
+     serverId: string;
+@@ -36,6 +39,9 @@ component on selection changes so playback and consent cannot cross items.
+     pdfViewerEnabled?: boolean;
+     onpreview: () => void;
+     onerror: () => Promise<string | null>;
++    /** Passed to the zoomable image (fork: image annotations). */
++    imageOverlay?: Snippet<[ZoomableImageOverlay]>;
++    imageToolbar?: Snippet;
+   } = $props();
+   const type = $derived(item.contentType.split(';', 1)[0].trim().toLowerCase());
+   const html = $derived(isHtmlAttachment(type));
+@@ -117,6 +123,8 @@ component on selection changes so playback and consent cannot cross items.
+       onerror={() => {
+         void onerror();
+       }}
++      overlay={imageOverlay}
++      toolbar={imageToolbar}
+     />
+   {:else}
+     <img
+diff --git a/apps/frontend/src/lib/ui/ZoomableImage.svelte b/apps/frontend/src/lib/ui/ZoomableImage.svelte
+index ef61996aa..cb24f79ff 100644
+--- a/apps/frontend/src/lib/ui/ZoomableImage.svelte
++++ b/apps/frontend/src/lib/ui/ZoomableImage.svelte
+@@ -5,33 +5,49 @@ mounted when a signed image URL refreshes and remounts it for another image.
+ <script module lang="ts">
+   /** Maximum magnification relative to the fitted image. */
+   const MAX_ZOOM = 16;
++
++  /** What an overlay needs to line up with the image. */
++  export type ZoomableImageOverlay = {
++    width: number;
++    height: number;
++    pxPerUnit: number;
++    transform: string;
++  };
+ </script>
+ 
+ <script lang="ts">
++  import type { Snippet } from 'svelte';
+   import { SvelteMap } from 'svelte/reactivity';
+   import { m } from '$lib/i18n/messages';
+ 
+   let {
+     src,
+     alt,
+-    onerror
++    onerror,
++    overlay,
++    toolbar
+   }: {
+     src: string;
+     alt: string;
+     onerror: () => void;
++    /** Drawn over the image with its box and transform (fork: image annotations). */
++    overlay?: Snippet<[ZoomableImageOverlay]>;
++    /** Extra controls next to the zoom buttons. */
++    toolbar?: Snippet;
+   } = $props();
+ 
+   let stage: HTMLDivElement;
+   let zoom = $state(1);
+   let offsetX = $state(0);
+   let offsetY = $state(0);
+-  let naturalWidth = 0;
+-  let naturalHeight = 0;
+-  let stageWidth = 0;
+-  let stageHeight = 0;
++  let naturalWidth = $state(0);
++  let naturalHeight = $state(0);
++  let stageWidth = $state(0);
++  let stageHeight = $state(0);
+   // Pointer positions stay relative to the stage while it owns pointer capture.
+   const pointers = new SvelteMap<number, { x: number; y: number }>();
+   const percent = $derived(Math.round(zoom * 100));
++  const transform = $derived(`translate(${offsetX}px, ${offsetY}px) scale(${zoom})`);
+ 
+   /** Limit panning to the fitted image's enlarged edges. */
+   function bounds(atZoom = zoom) {
+@@ -203,12 +219,20 @@ mounted when a signed image URL refreshes and remounts it for another image.
+       {alt}
+       draggable="false"
+       class="h-full w-full touch-none object-contain outline-none"
+-      style={`transform: translate(${offsetX}px, ${offsetY}px) scale(${zoom})`}
++      style:transform
+       {@attach measureImage}
+       {onerror}
+     />
++    {#if overlay && naturalWidth && naturalHeight}
++      {@render overlay({
++        width: naturalWidth,
++        height: naturalHeight,
++        pxPerUnit: Math.min(stageWidth / naturalWidth, stageHeight / naturalHeight) * zoom,
++        transform
++      })}
++    {/if}
+   </div>
+-  <div class="flex shrink-0 items-center justify-center gap-1 px-2 py-1">
++  <div class="flex shrink-0 flex-wrap items-center justify-center gap-1 px-2 py-1">
+     <button
+       type="button"
+       class="icon-action text-white"
+@@ -231,5 +255,6 @@ mounted when a signed image URL refreshes and remounts it for another image.
+     <button type="button" class="ms-2 btn-secondary" disabled={zoom === 1} onclick={fit}
+       >{m('ui.image_modal.fit')}</button
+     >
++    {@render toolbar?.()}
+   </div>
+ </div>
+diff --git a/apps/frontend/src/routes/chat/modals/AttachmentViewerModal.svelte b/apps/frontend/src/routes/chat/modals/AttachmentViewerModal.svelte
+index 478668540..366f4b7d6 100644
+--- a/apps/frontend/src/routes/chat/modals/AttachmentViewerModal.svelte
++++ b/apps/frontend/src/routes/chat/modals/AttachmentViewerModal.svelte
+@@ -23,6 +23,11 @@ media. HTML consent is never stored in history or carried to another selection.
+   import { serverConnectionManager } from '$lib/client';
+   import { m } from '$lib/i18n/messages';
+   import { AttachmentModal, AttachmentPreview } from '$lib/ui/attachments';
++  import { toast } from '$lib/ui/toast';
++  import AnnotationLayer from '$lib/annotations/AnnotationLayer.svelte';
++  import AnnotationToolbar from '$lib/annotations/AnnotationToolbar.svelte';
++  import type { AnnotationTool } from '$lib/annotations/annotationSpec';
++  import { ImageAnnotations } from '$lib/annotations/imageAnnotations.svelte';
+ 
+   let { modal, onclose }: { modal: AttachmentViewerModalState; onclose: () => void } = $props();
+   let index = $state(untrack(() => Math.max(0, Math.min(modal.index, modal.items.length - 1))));
+@@ -67,6 +72,58 @@ media. HTML consent is never stored in history or carried to another selection.
+     };
+   });
+ 
++  // Fork: vector annotations (pins, highlighter) on images, kept as thread replies.
++  const assetId = $derived(item.id);
++  let annotations = $state<ImageAnnotations | null>(null);
++  let tool = $state<AnnotationTool>('view');
++  let annotationsVisible = $state(true);
++  let selectedAnnotation = $state<string | null>(null);
++  $effect(() => {
++    if (!zoomable) return;
++    const target = {
++      serverId: modal.serverId,
++      roomId: modal.roomId,
++      eventId: modal.eventId,
++      assetId
++    };
++    // Only the image selects the layer; timeline reads inside must not rebuild it.
++    const layer = untrack(() => new ImageAnnotations(target));
++    annotations = layer;
++    untrack(() => {
++      tool = 'view';
++      selectedAnnotation = null;
++    });
++    return () => {
++      layer.dispose();
++      annotations = null;
++    };
++  });
++
++  function deleteSelectedAnnotation() {
++    const layer = annotations;
++    const eventId = selectedAnnotation;
++    if (!layer || !eventId || !layer.canDelete(eventId)) return;
++    selectedAnnotation = null;
++    void annotate(() => layer.delete(eventId), m('annotations.delete_failed'));
++  }
++
++  function annotationKeydown(event: KeyboardEvent) {
++    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
++    if (!selectedAnnotation || !annotationsVisible) return;
++    const target = event.target as Element | null;
++    if (target?.closest('input,textarea,select,[contenteditable]')) return;
++    event.preventDefault();
++    deleteSelectedAnnotation();
++  }
++
++  async function annotate(run: () => Promise<unknown>, failure: string) {
++    try {
++      await run();
++    } catch {
++      toast.error(failure);
++    }
++  }
++
+   function current(target: AttachmentViewerModalState, selected: number) {
+     return active && modal === target && page.state.modal === target && generation === selected;
+   }
+@@ -252,6 +309,8 @@ media. HTML consent is never stored in history or carried to another selection.
+   }
+ </script>
+ 
++<svelte:window onkeydown={annotationKeydown} />
++
+ <AttachmentModal
+   filename={item.filename}
+   contentType={item.contentType}
+@@ -288,6 +347,57 @@ media. HTML consent is never stored in history or carried to another selection.
+         void showPreview();
+       }}
+       onerror={recoverMedia}
++      imageOverlay={annotations && annotationsVisible ? annotationOverlay : undefined}
++      imageToolbar={annotations ? annotationToolbar : undefined}
+     />
+   {/key}
+ </AttachmentModal>
++
++{#snippet annotationOverlay(box: {
++  width: number;
++  height: number;
++  pxPerUnit: number;
++  transform: string;
++})}
++  {#if annotations}
++    {@const layer = annotations}
++    <AnnotationLayer
++      annotations={layer.annotations}
++      colors={layer.colors}
++      viewerColor={layer.colors.get(layer.viewerId ?? '') ?? '#ffe119'}
++      {...box}
++      {tool}
++      bind:selected={selectedAnnotation}
++      onpin={(at) => {
++        const number = layer.annotations.filter((a) => a.type === 'pin').length + 1;
++        void annotate(
++          () => layer.add({ type: 'pin', at }, `📍 ${number}`),
++          m('annotations.post_failed')
++        );
++      }}
++      onstroke={(points) =>
++        void annotate(() => layer.add({ type: 'hl', points }, '🖍️'), m('annotations.post_failed'))}
++      onmove={(annotation, shape) => {
++        const pins = layer.annotations.filter((a) => a.type === 'pin');
++        const label = annotation.type === 'pin' ? `↔️ 📍 ${pins.indexOf(annotation) + 1}` : '↔️ 🖍️';
++        void annotate(() => layer.move(annotation, shape, label), m('annotations.post_failed'));
++      }}
++    />
++  {/if}
++{/snippet}
++
++{#snippet annotationToolbar()}
++  {#if annotations}
++    {@const layer = annotations}
++    <AnnotationToolbar
++      bind:tool
++      bind:visible={annotationsVisible}
++      canAnnotate={layer.canAnnotate}
++      canUndo={layer.canUndo}
++      canDelete={annotationsVisible && layer.canDelete(selectedAnnotation)}
++      authors={layer.authors}
++      onundo={() => void annotate(() => layer.undoLast(), m('annotations.undo_failed'))}
++      ondelete={deleteSelectedAnnotation}
++    />
++  {/if}
++{/snippet}
+diff --git a/cli/internal/core/image_annotations.go b/cli/internal/core/image_annotations.go
+new file mode 100644
+index 000000000..b59aa6ac1
+--- /dev/null
++++ b/cli/internal/core/image_annotations.go
+@@ -0,0 +1,14 @@
++package core
++
++import "strings"
++
++// imageAnnotationMarker starts the marker link that the web client's image
++// annotations (lizzard fork patch) append to a thread reply.
++const imageAnnotationMarker = "](#chatto-annot:v1:"
++
++// isImageAnnotationReply reports whether a message body is an image annotation.
++// Such replies are bookkeeping for the image viewer, so posting one does not
++// auto-follow the thread for the poster or the image's author.
++func isImageAnnotationReply(body string) bool {
++	return strings.Contains(body, imageAnnotationMarker)
++}
+diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
+index 8d76b4bf5..926316ebd 100644
+--- a/cli/internal/core/messages.go
++++ b/cli/internal/core/messages.go
+@@ -890,7 +890,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
+ 	// Reply count / participants / lastReplyAt are derived live from
+ 	// ThreadProjection now, so no KV write — but we still need the
+ 	// root author for the auto-follow logic below.
+-	if inThread != "" {
++	// Fork: image annotation replies do not make anyone follow the thread.
++	if inThread != "" && !isImageAnnotationReply(body) {
+ 		rootEvent, err := c.GetRoomEventByEventID(ctx, kind, room_id, inThread)
+ 		if err != nil {
+ 			c.logger.Warn("Failed to get thread root event",
+-- 
+2.56.0
+

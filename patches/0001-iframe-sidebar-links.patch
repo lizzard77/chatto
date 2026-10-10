@@ -1,0 +1,348 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: pantheon <none@local>
+Date: Sun, 27 Sep 2026 16:59:56 +0200
+Subject: [PATCH] Frontend: embed sidebar links in an iframe
+
+---
+ apps/frontend/messages/de-DE/admin.json       |  6 +-
+ apps/frontend/messages/en-GB/admin.json       |  6 +-
+ apps/frontend/src/lib/RoomList.svelte         | 37 +++++++++--
+ .../src/lib/navigation/sidebarLinkEmbed.ts    | 26 ++++++++
+ .../[serverId]/embed/[linkId]/+page.svelte    | 66 +++++++++++++++++++
+ .../manage/rooms/AdminRoomLayoutEditor.svelte | 31 +++++++--
+ 6 files changed, 159 insertions(+), 13 deletions(-)
+ create mode 100644 apps/frontend/src/lib/navigation/sidebarLinkEmbed.ts
+ create mode 100644 apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
+
+diff --git a/apps/frontend/messages/de-DE/admin.json b/apps/frontend/messages/de-DE/admin.json
+index 44e951fdd..8845cd614 100644
+--- a/apps/frontend/messages/de-DE/admin.json
++++ b/apps/frontend/messages/de-DE/admin.json
+@@ -321,7 +321,11 @@
+         "threading_title": "Thread-Modus",
+         "threading_subtitle": "Lege fest, wie Unterhaltungen in diesem Raum Threads verwenden.",
+         "threading_help": "Eine Änderung gilt nur für neue Nachrichten. Bestehende Threads bleiben unverändert. „Erforderlich“ passt zu Räumen, in denen jede Nachricht ein eigenes Thema ist, zum Beispiel Support-Anfragen. „Empfohlen“ hält belebte Räume übersichtlich, erzwingt aber keine Threads."
+-      }
++      },
++      "embed_link": "In Chatto öffnen",
++      "embed_link_description": "Zeigt die Seite im Chatbereich statt in einem neuen Tab. Die Seite muss Einbetten erlauben.",
++      "embed_open_in_tab": "In neuem Tab öffnen",
++      "embed_not_found": "Link nicht gefunden"
+     },
+     "security": {
+       "title": "Sicherheit",
+diff --git a/apps/frontend/messages/en-GB/admin.json b/apps/frontend/messages/en-GB/admin.json
+index 385c86d9c..8c13f5513 100644
+--- a/apps/frontend/messages/en-GB/admin.json
++++ b/apps/frontend/messages/en-GB/admin.json
+@@ -321,7 +321,11 @@
+         "threading_title": "Threading Mode",
+         "threading_subtitle": "Choose how conversations in this room use threads.",
+         "threading_help": "A change applies only to new messages. Existing threads stay as they are. Required is good for rooms where each message is a separate topic, such as support requests. Encouraged keeps busy rooms easy to read, but does not force threads."
+-      }
++      },
++      "embed_link": "Open inside Chatto",
++      "embed_link_description": "Shows the page in the chat area instead of a new tab. The site must allow embedding.",
++      "embed_open_in_tab": "Open in new tab",
++      "embed_not_found": "Link not found"
+     },
+     "security": {
+       "title": "Security",
+diff --git a/apps/frontend/src/lib/RoomList.svelte b/apps/frontend/src/lib/RoomList.svelte
+index 721188611..c7ed7516f 100644
+--- a/apps/frontend/src/lib/RoomList.svelte
++++ b/apps/frontend/src/lib/RoomList.svelte
+@@ -21,6 +21,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+     sidebarLinkTarget
+   } from '$lib/navigation/sidebarLinkTarget';
+   import { serverRegistry } from '$lib/client';
++  import {
++    isEmbeddedSidebarLink,
++    stripSidebarLinkEmbed,
++    withSidebarLinkEmbed
++  } from '$lib/navigation/sidebarLinkEmbed';
+   import { useServerScope } from '$lib/state/server/scope.svelte';
+   import RoomGroupSection from '$lib/components/chat/RoomGroupSection.svelte';
+   import CreateRoomGroupControl from '$lib/components/chat/CreateRoomGroupControl.svelte';
+@@ -184,6 +189,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+   let editingLinkId = $state<string | null>(null);
+   let linkLabel = $state('');
+   let linkUrl = $state('');
++  let linkEmbed = $state(false);
+   let deleteGroupDialogVisible = $state(false);
+   let deleteGroupTarget = $state<RoomsListGroup | null>(null);
+   let deleteLinkDialogVisible = $state(false);
+@@ -381,6 +387,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+     linkGroupId = group.id;
+     linkLabel = '';
+     linkUrl = '';
++    linkEmbed = false;
+     linkDialogVisible = true;
+   }
+ 
+@@ -390,14 +397,15 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+     editingLinkId = item.link.id;
+     linkGroupId = null;
+     linkLabel = item.link.label;
+-    linkUrl = item.link.url;
++    linkUrl = stripSidebarLinkEmbed(item.link.url);
++    linkEmbed = isEmbeddedSidebarLink(item.link.url);
+     linkDialogVisible = true;
+   }
+ 
+   async function saveLink(event: Event): Promise<void> {
+     event.preventDefault();
+     const label = linkLabel.trim();
+-    const url = normalizeSidebarLinkURL(linkUrl);
++    const url = withSidebarLinkEmbed(normalizeSidebarLinkURL(linkUrl), linkEmbed);
+     if (!label || !url) return;
+     try {
+       if (editingLinkId) {
+@@ -1048,11 +1056,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+       {@render navigationRoomLink(room)}
+     {/if}
+   {:else}
+-    {@const target = sidebarLinkTarget(item.link.url, activeServerBaseURL)}
++    {@const embedded = isEmbeddedSidebarLink(item.link.url)}
++    {@const target = sidebarLinkTarget(stripSidebarLinkEmbed(item.link.url), activeServerBaseURL)}
++    {@const isCurrentEmbed = embedded && page.params.linkId === item.link.id}
+     {@const owningGroup = groupByItemId.get(item.id)}
+     {@const showDragHandle = sidebarDragEnabled && owningGroup?.viewerCanManageGroup}
+     <a
+-      {...sidebarLinkAnchorAttributes(target)}
++      {...embedded && target.valid
++        ? {
++            href: resolve('/chat/[serverId]/embed/[linkId]', {
++              serverId: serverSegment,
++              linkId: item.link.id
++            })
++          }
++        : sidebarLinkAnchorAttributes(target)}
++      aria-current={isCurrentEmbed ? 'page' : undefined}
+       aria-disabled={!target.valid}
+       class={[
+         'group/link sidebar-item w-full text-start',
+@@ -1067,7 +1085,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+         <span
+           aria-hidden="true"
+           class={[
+-            'iconify sidebar-icon icon-[uil--external-link-alt] text-muted transition-opacity feedback-quick',
++            'iconify sidebar-icon text-muted transition-opacity feedback-quick',
++            embedded ? 'icon-[uil--window]' : 'icon-[uil--external-link-alt]',
+             showDragHandle ? 'group-focus-within/link:opacity-0 group-hover/link:opacity-0' : ''
+           ]}
+         ></span>
+@@ -1358,7 +1377,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+ {/if}
+ 
+ {#if linkDialogVisible}
+-  {#await Promise.all( [import('$lib/ui').then( ({ FormDialog }) => ({ default: FormDialog }) ), import('$lib/ui/form').then( ({ TextInput }) => ({ default: TextInput }) )] ) then [FormDialogModule, TextInputModule]}
++  {#await Promise.all( [import('$lib/ui').then( ({ FormDialog }) => ({ default: FormDialog }) ), import('$lib/ui/form').then( ({ TextInput }) => ({ default: TextInput }) ), import('$lib/ui/form').then( ({ Checkbox }) => ({ default: Checkbox }) )] ) then [FormDialogModule, TextInputModule, CheckboxModule]}
+     <FormDialogModule.default
+       bind:visible={linkDialogVisible}
+       title={editingLinkId ? m('admin.rooms_admin.edit_link') : m('admin.rooms_admin.create_link')}
+@@ -1380,6 +1399,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+         bind:value={linkUrl}
+         placeholder={m('admin.rooms_admin.link_url_placeholder')}
+       />
++      <CheckboxModule.default
++        id="sidebar-link-embed"
++        label={m('admin.rooms_admin.embed_link')}
++        description={m('admin.rooms_admin.embed_link_description')}
++        bind:checked={linkEmbed}
++      />
+     </FormDialogModule.default>
+   {/await}
+ {/if}
+diff --git a/apps/frontend/src/lib/navigation/sidebarLinkEmbed.ts b/apps/frontend/src/lib/navigation/sidebarLinkEmbed.ts
+new file mode 100644
+index 000000000..2b1f0f44a
+--- /dev/null
++++ b/apps/frontend/src/lib/navigation/sidebarLinkEmbed.ts
+@@ -0,0 +1,26 @@
++// Sidebar links that open inside Chatto instead of a new tab.
++//
++// The server stores sidebar links as plain URLs, so the embed flag lives in a
++// URL fragment that browsers never send to the target site. This keeps the
++// server and its API unchanged.
++
++export const SIDEBAR_LINK_EMBED_FRAGMENT = 'chatto-embed';
++
++const embedSuffix = `#${SIDEBAR_LINK_EMBED_FRAGMENT}`;
++
++export function isEmbeddedSidebarLink(url: string): boolean {
++  return url.trim().endsWith(embedSuffix);
++}
++
++export function stripSidebarLinkEmbed(url: string): string {
++  const value = url.trim();
++  return value.endsWith(embedSuffix) ? value.slice(0, -embedSuffix.length) : value;
++}
++
++export function withSidebarLinkEmbed(url: string, embed: boolean): string {
++  const base = stripSidebarLinkEmbed(url);
++  if (!embed || !base) return base;
++  // A URL with its own fragment cannot carry the flag without changing it.
++  if (base.includes('#')) return base;
++  return `${base}${embedSuffix}`;
++}
+diff --git a/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte b/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
+new file mode 100644
+index 000000000..22001327a
+--- /dev/null
++++ b/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
+@@ -0,0 +1,66 @@
++<script lang="ts">
++  import { page } from '$app/state';
++  import { m } from '$lib/i18n/messages';
++  import { sidebarLinkTarget } from '$lib/navigation/sidebarLinkTarget';
++  import { stripSidebarLinkEmbed } from '$lib/navigation/sidebarLinkEmbed';
++  import { serverRegistry } from '$lib/client';
++  import { useServerScope } from '$lib/state/server/scope.svelte';
++  import { serverUi } from '$lib/state/server/serverUi';
++  import EmptyState from '$lib/ui/EmptyState.svelte';
++  import PageTitle from '$lib/ui/PageTitle.svelte';
++  import PaneHeader from '$lib/ui/PaneHeader.svelte';
++
++  const serverScope = useServerScope();
++  const navigation = $derived(serverUi(serverScope.store).navigation);
++  const serverBaseURL = $derived(serverRegistry.getServer(serverScope.serverId)?.url ?? null);
++
++  const link = $derived.by(() => {
++    for (const group of navigation.roomGroups) {
++      for (const item of group.items ?? []) {
++        if (item.type === 'link' && item.link.id === page.params.linkId) return item.link;
++      }
++    }
++    return null;
++  });
++
++  const target = $derived(
++    link ? sidebarLinkTarget(stripSidebarLinkEmbed(link.url), serverBaseURL) : null
++  );
++</script>
++
++<PageTitle title={link?.label ?? m('admin.rooms_admin.embed_not_found')} />
++
++<div class="pane-page">
++  <PaneHeader title={link?.label ?? ''}>
++    {#snippet actions()}
++      {#if target?.valid}
++        <a
++          href={target.href}
++          target="_blank"
++          rel="noopener noreferrer"
++          class="pane-header-icon-button text-muted"
++          title={m('admin.rooms_admin.embed_open_in_tab')}
++          aria-label={m('admin.rooms_admin.embed_open_in_tab')}
++        >
++          <span class="pane-header-icon-glyph text-base icon-[uil--external-link-alt]" aria-hidden="true"
++          ></span>
++        </a>
++      {/if}
++    {/snippet}
++  </PaneHeader>
++
++  {#if target?.valid}
++    {#key target.href}
++      <iframe
++        src={target.href}
++        title={link?.label}
++        class="min-h-0 w-full flex-1 border-0 bg-white"
++        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"
++        referrerpolicy="strict-origin-when-cross-origin"
++        allow="clipboard-write; fullscreen"
++      ></iframe>
++    {/key}
++  {:else if navigation.roomGroups.length > 0}
++    <EmptyState title={m('admin.rooms_admin.embed_not_found')} />
++  {/if}
++</div>
+diff --git a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
+index 0a49639db..9a8f8d950 100644
+--- a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
++++ b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
+@@ -21,7 +21,12 @@
+     LoadingFog,
+     PaneHeader
+   } from '$lib/ui';
+-  import { Button, TextInput } from '$lib/ui/form';
++  import { Button, Checkbox, TextInput } from '$lib/ui/form';
++  import {
++    isEmbeddedSidebarLink,
++    stripSidebarLinkEmbed,
++    withSidebarLinkEmbed
++  } from '$lib/navigation/sidebarLinkEmbed';
+   import { toast } from '$lib/ui/toast';
+   import { flip } from 'svelte/animate';
+   import { dragHandle, dragHandleZone, dndzone, type DndEvent } from 'svelte-dnd-action';
+@@ -279,12 +284,14 @@
+   let linkGroupId = $state<string | null>(null);
+   let linkLabel = $state('');
+   let linkUrl = $state('');
++  let linkEmbed = $state(false);
+ 
+   function openCreateLink(group: GroupState) {
+     editingLinkId = null;
+     linkGroupId = group.id;
+     linkLabel = '';
+     linkUrl = '';
++    linkEmbed = false;
+     linkDialogVisible = true;
+   }
+ 
+@@ -292,14 +299,15 @@
+     editingLinkId = link.id;
+     linkGroupId = null;
+     linkLabel = link.label;
+-    linkUrl = link.url;
++    linkUrl = stripSidebarLinkEmbed(link.url);
++    linkEmbed = isEmbeddedSidebarLink(link.url);
+     linkDialogVisible = true;
+   }
+ 
+   async function handleLinkSubmit(e: Event) {
+     e.preventDefault();
+     const label = linkLabel.trim();
+-    const url = linkUrl.trim();
++    const url = withSidebarLinkEmbed(linkUrl.trim(), linkEmbed);
+     if (!label || !url) return;
+ 
+     const result = editingLinkId
+@@ -548,11 +556,18 @@
+                         <div class="flex min-w-0 items-baseline gap-1.5">
+                           <span
+                             aria-hidden="true"
+-                            class="iconify icon-[uil--external-link-alt] text-muted"
++                            class={[
++                              'iconify text-muted',
++                              isEmbeddedSidebarLink(room.link.url)
++                                ? 'icon-[uil--window]'
++                                : 'icon-[uil--external-link-alt]'
++                            ]}
+                           ></span>
+                           <span class="truncate font-medium">{room.link.label}</span>
+                         </div>
+-                        <p class="truncate text-sm text-muted">{room.link.url}</p>
++                        <p class="truncate text-sm text-muted">
++                          {stripSidebarLinkEmbed(room.link.url)}
++                        </p>
+                       {/if}
+                     </div>
+                     <div class="flex items-center gap-1.5">
+@@ -624,6 +639,12 @@
+     bind:value={linkUrl}
+     placeholder={m('admin.rooms_admin.link_url_placeholder')}
+   />
++  <Checkbox
++    id="sidebar-link-embed"
++    label={m('admin.rooms_admin.embed_link')}
++    description={m('admin.rooms_admin.embed_link_description')}
++    bind:checked={linkEmbed}
++  />
+ </FormDialog>
+ 
+ {#if deleteGroupConfirmDialogVisible && deleteGroupConfirm}
+-- 
+2.56.0
+

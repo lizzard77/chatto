@@ -1,0 +1,18 @@
+{
+  "name": "erato-chatto",
+  "version": "0.1.0",
+  "description": "Musik-Bot für Chatto: streamt eine lokale Audioquelle in einen Anruf",
+  "main": "erato.mjs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env erato.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@livekit/rtc-node": "^1.1.0"
+  }
+}
