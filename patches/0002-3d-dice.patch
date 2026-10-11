@@ -10,22 +10,24 @@ Dice bots append a marker link [🎲](#chatto-dice:<kind>.<sides>.<value>,...)
 to their roll message. The renderer turns it into a replay button and,
 when the message arrives live in the open conversation, throws the dice
 across the window with a small dependency-free WebGL overlay. Daggerheart
-Hope/Fear dice are coloured and labelled; the overlay is switchable per
-device in Settings → Appearance (off by default with reduced motion).
+Hope/Fear dice are coloured and labelled; Savage Worlds Wild Dice are
+labelled and an optional ;sw= parameter shows the trait roll result
+(critical failure, failure, success, raises). The overlay is switchable
+per device in Settings → Appearance (off by default with reduced motion).
 ---
- apps/frontend/messages/de-DE/dice.json        |  29 +
- apps/frontend/messages/en-GB/dice.json        |  29 +
+ apps/frontend/messages/de-DE/dice.json        |  37 +
+ apps/frontend/messages/en-GB/dice.json        |  37 +
  apps/frontend/scripts/check-bundle-size.mjs   |   6 +-
  .../settings/AppAppearanceSettings.svelte     |  24 +
- apps/frontend/src/lib/dice/dice.svelte.ts     | 115 +++
+ apps/frontend/src/lib/dice/dice.svelte.ts     | 121 +++
  apps/frontend/src/lib/dice/diceGeometry.ts    | 272 +++++++
- apps/frontend/src/lib/dice/diceRenderer.ts    | 679 ++++++++++++++++++
- apps/frontend/src/lib/dice/diceSpec.ts        |  68 ++
+ apps/frontend/src/lib/dice/diceRenderer.ts    | 696 ++++++++++++++++++
+ apps/frontend/src/lib/dice/diceSpec.ts        | 101 +++
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
  apps/frontend/src/lib/markdown.ts             |  31 +
  apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   9 +
  .../[roomId]/ConversationPane.svelte          |   9 +
- 12 files changed, 1270 insertions(+), 2 deletions(-)
+ 12 files changed, 1342 insertions(+), 2 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/dice.json
  create mode 100644 apps/frontend/messages/en-GB/dice.json
  create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
@@ -35,10 +37,10 @@ device in Settings → Appearance (off by default with reduced motion).
 
 diff --git a/apps/frontend/messages/de-DE/dice.json b/apps/frontend/messages/de-DE/dice.json
 new file mode 100644
-index 000000000..5a69aeff0
+index 000000000..9dec03085
 --- /dev/null
 +++ b/apps/frontend/messages/de-DE/dice.json
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,37 @@
 +{
 +  "dice": {
 +    "hope": "Hoffnung",
@@ -48,6 +50,14 @@ index 000000000..5a69aeff0
 +    "with_hope": "mit Hoffnung",
 +    "with_fear": "mit Furcht",
 +    "critical": "Kritischer Erfolg!",
++    "wild": "Wild Die",
++    "swade": {
++      "critical_failure": "Kritischer Fehlschlag!",
++      "failure": "Fehlschlag",
++      "success": "Erfolg",
++      "raise": "Erfolg mit Steigerung!",
++      "raises": "Erfolg mit {count} Steigerungen!"
++    },
 +    "replay": "Würfel noch einmal rollen",
 +    "settings": {
 +      "title": "3D-Würfel",
@@ -70,10 +80,10 @@ index 000000000..5a69aeff0
 +}
 diff --git a/apps/frontend/messages/en-GB/dice.json b/apps/frontend/messages/en-GB/dice.json
 new file mode 100644
-index 000000000..2a6c89861
+index 000000000..820867716
 --- /dev/null
 +++ b/apps/frontend/messages/en-GB/dice.json
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,37 @@
 +{
 +  "dice": {
 +    "hope": "Hope",
@@ -83,6 +93,14 @@ index 000000000..2a6c89861
 +    "with_hope": "with Hope",
 +    "with_fear": "with Fear",
 +    "critical": "Critical success!",
++    "wild": "Wild Die",
++    "swade": {
++      "critical_failure": "Critical failure!",
++      "failure": "Failure",
++      "success": "Success",
++      "raise": "Success with a raise!",
++      "raises": "Success with {count} raises!"
++    },
 +    "replay": "Roll these dice again",
 +    "settings": {
 +      "title": "3D dice",
@@ -178,10 +196,10 @@ index f4a71787f..1a83e7842 100644
  </div>
 diff --git a/apps/frontend/src/lib/dice/dice.svelte.ts b/apps/frontend/src/lib/dice/dice.svelte.ts
 new file mode 100644
-index 000000000..3ddf7efbe
+index 000000000..4a5eb0f94
 --- /dev/null
 +++ b/apps/frontend/src/lib/dice/dice.svelte.ts
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,121 @@
 +/**
 + * 3D dice for dice-bot messages: the per-device on/off preference, the live
 + * trigger for newly posted rolls, and replays from the 🎲 button.
@@ -193,7 +211,7 @@ index 000000000..3ddf7efbe
 +import type { RealtimeEvent } from '@chatto/client';
 +import { Codecs, globalSlot } from '@chatto/client/storage/slot';
 +import { m } from '$lib/i18n/messages';
-+import { diceRollFromMessageBody, parseDiceSpec, type DieSpec } from './diceSpec';
++import { diceRollFromMessageBody, parseDiceRoll, type DiceRoll } from './diceSpec';
 +import type { DiceLabels, DiceOverlay } from './diceRenderer';
 +
 +/** Rolls older than this when they arrive are replays or catch-up, not live. */
@@ -240,7 +258,7 @@ index 000000000..3ddf7efbe
 +// eslint-disable-next-line svelte/prefer-svelte-reactivity
 +const rolledEventIds = new Set<string>();
 +
-+function labels(): DiceLabels {
++function labels(raises: number): DiceLabels {
 +  return {
 +    hope: m('dice.hope'),
 +    fear: m('dice.fear'),
@@ -248,11 +266,17 @@ index 000000000..3ddf7efbe
 +    dis: m('dice.disadvantage'),
 +    withHope: m('dice.with_hope'),
 +    withFear: m('dice.with_fear'),
-+    critical: m('dice.critical')
++    critical: m('dice.critical'),
++    wild: m('dice.wild'),
++    swadeCritical: m('dice.swade.critical_failure'),
++    swadeFailure: m('dice.swade.failure'),
++    swadeSuccess: m('dice.swade.success'),
++    swadeRaises:
++      raises === 1 ? m('dice.swade.raise') : m('dice.swade.raises', { count: String(raises) })
 +  };
 +}
 +
-+async function throwDice(dice: DieSpec[]): Promise<void> {
++async function throwDice({ dice, swade }: DiceRoll): Promise<void> {
 +  try {
 +    renderer ??= import('./diceRenderer');
 +    const { DiceOverlay } = await renderer;
@@ -260,7 +284,7 @@ index 000000000..3ddf7efbe
 +      overlay?.destroy();
 +      overlay = null;
 +    });
-+    overlay.roll(dice, labels());
++    overlay.roll(dice, labels(typeof swade === 'number' ? swade : 0), swade);
 +  } catch (error) {
 +    renderer = null;
 +    console.warn('[dice] 3D dice unavailable:', error);
@@ -289,13 +313,13 @@ index 000000000..3ddf7efbe
 +
 +  rolledEventIds.add(event.id);
 +  if (rolledEventIds.size > 200) rolledEventIds.delete(rolledEventIds.values().next().value!);
-+  void throwDice(roll.dice);
++  void throwDice(roll);
 +}
 +
 +/** Replay a roll from its 🎲 button. Works even when automatic rolls are off. */
-+export function replayDice(spec: string): void {
-+  const dice = parseDiceSpec(spec);
-+  if (dice) void throwDice(dice);
++export function replayDice(payload: string): void {
++  const roll = parseDiceRoll(payload);
++  if (roll) void throwDice(roll);
 +}
 diff --git a/apps/frontend/src/lib/dice/diceGeometry.ts b/apps/frontend/src/lib/dice/diceGeometry.ts
 new file mode 100644
@@ -577,10 +601,10 @@ index 000000000..520056191
 +}
 diff --git a/apps/frontend/src/lib/dice/diceRenderer.ts b/apps/frontend/src/lib/dice/diceRenderer.ts
 new file mode 100644
-index 000000000..4796e6c5d
+index 000000000..747bd4a19
 --- /dev/null
 +++ b/apps/frontend/src/lib/dice/diceRenderer.ts
-@@ -0,0 +1,679 @@
+@@ -0,0 +1,696 @@
 +/**
 + * Dependency-free WebGL overlay that throws dice across the window.
 + *
@@ -590,7 +614,7 @@ index 000000000..4796e6c5d
 + * only while a roll is on screen and never takes pointer events.
 + */
 +
-+import type { DieKind, DieSpec } from './diceSpec';
++import type { DieKind, DieSpec, SwadeOutcome } from './diceSpec';
 +import {
 +  add,
 +  cross,
@@ -613,6 +637,12 @@ index 000000000..4796e6c5d
 +  withHope: string;
 +  withFear: string;
 +  critical: string;
++  wild: string;
++  swadeCritical: string;
++  swadeFailure: string;
++  swadeSuccess: string;
++  /** Success with raises; the caller words it for the roll's number of raises. */
++  swadeRaises: string;
 +};
 +
 +type Theme = { body: string; edge: string; ink: string; label?: keyof DiceLabels; pill: string };
@@ -625,7 +655,8 @@ index 000000000..4796e6c5d
 +  dis: { body: '#c0392b', edge: '#7a1d14', ink: '#ffffff', label: 'dis', pill: '#c0392b' },
 +  gm: { body: '#6e1a1a', edge: '#330808', ink: '#ffd27a', pill: '#6e1a1a' },
 +  std: { body: '#f3efe4', edge: '#a8a08a', ink: '#1f1f1f', pill: '#555555' },
-+  drop: { body: '#8d8d8d', edge: '#555555', ink: '#e6e6e6', pill: '#555555' }
++  drop: { body: '#8d8d8d', edge: '#555555', ink: '#e6e6e6', pill: '#555555' },
++  wild: { body: '#d35400', edge: '#7e3200', ink: '#ffffff', label: 'wild', pill: '#d35400' }
 +};
 +
 +const ROLL_SECONDS = 1.6;
@@ -1075,7 +1106,7 @@ index 000000000..4796e6c5d
 +  }
 +
 +  /** Throw a new set of dice; any dice still on screen are cleared. */
-+  roll(dice: DieSpec[], labels: DiceLabels): void {
++  roll(dice: DieSpec[], labels: DiceLabels, swade: SwadeOutcome | null = null): void {
 +    for (const die of this.#dice) die.label?.remove();
 +    this.#banner?.remove();
 +    this.#banner = null;
@@ -1098,6 +1129,16 @@ index 000000000..4796e6c5d
 +          : hope.value > fear.value
 +            ? [labels.withHope, THEMES.hope.pill]
 +            : [labels.withFear, THEMES.fear.pill];
++      this.#banner = this.#pill(text, color, '20px');
++    } else if (swade !== null) {
++      const [text, color] =
++        swade === 'cf'
++          ? [labels.swadeCritical, '#8e44ad']
++          : swade === 'fail'
++            ? [labels.swadeFailure, '#555555']
++            : swade > 0
++              ? [labels.swadeRaises, '#ff9500']
++              : [labels.swadeSuccess, '#27ae60'];
 +      this.#banner = this.#pill(text, color, '20px');
 +    }
 +
@@ -1262,42 +1303,58 @@ index 000000000..4796e6c5d
 +}
 diff --git a/apps/frontend/src/lib/dice/diceSpec.ts b/apps/frontend/src/lib/dice/diceSpec.ts
 new file mode 100644
-index 000000000..65b2c6b63
+index 000000000..4646daaec
 --- /dev/null
 +++ b/apps/frontend/src/lib/dice/diceSpec.ts
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,101 @@
 +/**
 + * Dice roll markers in message bodies.
 + *
-+ * A dice bot (for example Pantheon) appends a link `[🎲](#chatto-dice:<spec>)`
++ * A dice bot (for example Pantheon) appends a link `[🎲](#chatto-dice:<payload>)`
 + * to its roll result. The text stays readable for clients without this patch,
 + * while the patched renderer turns the link into a replay button and rolls
 + * the dice in 3D when the message arrives live.
 + *
-+ * `<spec>` is a comma-separated list of `<kind>.<sides>.<value>` entries, for
-+ * example `hope.12.7,fear.12.3,adv.6.4`, optionally followed by `;by=<userId>`
-+ * naming who rolled (the bot posts the message, so its author is the bot).
++ * `<payload>` is a comma-separated list of `<kind>.<sides>.<value>` entries, for
++ * example `hope.12.7,fear.12.3,adv.6.4`, optionally followed by parameters:
++ * `;by=<userId>` names who rolled (the bot posts the message, so its author is
++ * the bot), `;sw=<outcome>` is the Savage Worlds result of a trait roll
++ * (`cf` critical failure, `fail`, `ok`, `r<n>` success with n raises).
 + */
 +
 +export const DICE_MARKER_PREFIX = '#chatto-dice:';
 +
 +/** What a die means for the roll; it selects colours and labels. */
-+export type DieKind = 'hope' | 'fear' | 'adv' | 'dis' | 'gm' | 'std' | 'drop';
++export type DieKind = 'hope' | 'fear' | 'adv' | 'dis' | 'gm' | 'std' | 'drop' | 'wild';
 +
-+export const dieKinds: readonly DieKind[] = ['hope', 'fear', 'adv', 'dis', 'gm', 'std', 'drop'];
++export const dieKinds: readonly DieKind[] = [
++  'hope',
++  'fear',
++  'adv',
++  'dis',
++  'gm',
++  'std',
++  'drop',
++  'wild'
++];
 +
 +/** Die shapes that the renderer can show. d100 is shown as two d10. */
 +export const supportedSides = [4, 6, 8, 10, 12, 20, 100] as const;
 +
 +export type DieSpec = { kind: DieKind; sides: number; value: number };
 +
++/** Savage Worlds trait roll result: critical failure, failure, or the number of raises. */
++export type SwadeOutcome = 'cf' | 'fail' | number;
++
 +/** At most this many dice are rolled at once. */
 +export const MAX_DICE = 24;
 +
 +const ENTRY = /^([a-z]+)\.(\d{1,3})\.(\d{1,3})$/;
-+const MARKER_IN_BODY = /\]\(#chatto-dice:([a-z0-9.,]{1,600})(?:;by=([A-Za-z0-9_-]{1,64}))?\)/;
++const PAYLOAD =
++  /^([a-z]+\.\d+\.\d+(?:,[a-z]+\.\d+\.\d+){0,63})((?:;by=[\w-]{1,64}|;sw=(?:cf|fail|ok|r\d))*)$/;
++const MARKER_IN_BODY = /\]\(#chatto-dice:([^)\s]{1,700})\)/;
 +
-+/** Parse a spec; returns null when it is malformed or contains no showable die. */
++/** Parse a dice list; returns null when it is malformed or contains no showable die. */
 +export function parseDiceSpec(spec: string): DieSpec[] | null {
 +  const dice: DieSpec[] = [];
 +  for (const entry of spec.split(',')) {
@@ -1314,25 +1371,42 @@ index 000000000..65b2c6b63
 +}
 +
 +/**
-+ * The spec of a marker link href, or null for any other href. Only checks the
-+ * shape, so the markdown renderer stays small; replays parse it fully.
++ * The payload of a marker link href, or null for any other href. Only checks
++ * the shape, so the markdown renderer stays small; rolls parse it fully.
 + */
 +export function diceSpecFromHref(href: string): string | null {
-+  return (
-+    /^#chatto-dice:([a-z]+\.\d+\.\d+(?:,[a-z]+\.\d+\.\d+){0,63})(?:;by=[\w-]{1,64})?$/.exec(
-+      href
-+    )?.[1] ?? null
-+  );
++  if (!href.startsWith(DICE_MARKER_PREFIX)) return null;
++  const payload = href.slice(DICE_MARKER_PREFIX.length);
++  return PAYLOAD.test(payload) ? payload : null;
 +}
 +
-+export type DiceRoll = { dice: DieSpec[]; rollerId: string | null };
++export type DiceRoll = { dice: DieSpec[]; rollerId: string | null; swade: SwadeOutcome | null };
++
++function swadeOutcome(value: string | undefined): SwadeOutcome | null {
++  if (value === 'cf' || value === 'fail') return value;
++  if (value === 'ok') return 0;
++  return value?.startsWith('r') ? Number(value.slice(1)) : null;
++}
++
++/** Parse a marker payload (dice list plus parameters). */
++export function parseDiceRoll(payload: string): DiceRoll | null {
++  const match = PAYLOAD.exec(payload);
++  const dice = match ? parseDiceSpec(match[1]) : null;
++  if (!match || !dice) return null;
++  const params = new Map(
++    match[2]
++      .split(';')
++      .filter(Boolean)
++      .map((param) => param.split('=') as [string, string])
++  );
++  return { dice, rollerId: params.get('by') ?? null, swade: swadeOutcome(params.get('sw')) };
++}
 +
 +/** The roll of the first marker in a raw markdown body. */
 +export function diceRollFromMessageBody(body: string | undefined): DiceRoll | null {
 +  if (!body || !body.includes(DICE_MARKER_PREFIX)) return null;
 +  const match = MARKER_IN_BODY.exec(body);
-+  const dice = match ? parseDiceSpec(match[1]) : null;
-+  return dice ? { dice, rollerId: match?.[2] ?? null } : null;
++  return match ? parseDiceRoll(match[1]) : null;
 +}
 diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
 index 2d2ef1fcb..eaad03736 100644

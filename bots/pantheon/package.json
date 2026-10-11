@@ -1,14 +1,14 @@
 {
   "name": "pantheon-chatto",
   "version": "2.0.0",
-  "description": "Daggerheart Dice Bot für Chatto",
+  "description": "Würfel-Bot für Chatto (Daggerheart und Savage Worlds)",
   "main": "bot.mjs",
   "private": true,
   "scripts": {
     "start": "node bot.mjs"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "license": "MIT",
   "dependencies": {

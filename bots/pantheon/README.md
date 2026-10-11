@@ -1,43 +1,69 @@
-# 🎲 Pantheon — Daggerheart Dice Bot für Chatto
+# 🎲 Pantheon — Würfel-Bot für Chatto (Daggerheart und Savage Worlds)
 
-Port des Matrix-Bots aus `selfhosted-services/he1/synapse/bot/pantheon`. Die Commands (`commands/`, `utils/`)
-sind übernommen; neu ist nur die Anbindung in `bot.mjs`:
+- `bot.mjs` – Anbindung an Chatto und Commands.
+  - **Eingang:** Realtime-WebSocket (`/api/realtime`, Protokoll 4, `LIVE_ONLY`). Der Bot sieht alle
+    Nachrichten in Räumen, in denen er Mitglied ist und `message.read` hat, und reagiert auf `!…`.
+  - **Ausgang:** `MessageService/CreateMessage` per ConnectRPC-JSON (Markdown), als Antwort auf die
+    auslösende Nachricht (im selben Thread). `@` wird escaped, damit der Bot niemanden anpingt.
+- `rolls.mjs` – Würfelregeln und Hilfetexte.
+- `storage.mjs` – `storage/state.json`: GM-Modus pro User, Spielsystem pro Raum.
+- `gen/` – Protobuf-Bindings für das Realtime-Protokoll (nur der Realtime-Proto und seine Imports;
+  der WebSocket spricht ausschließlich binäres Protobuf).
 
-- **Eingang:** Realtime-WebSocket (`/api/realtime`, Protokoll 4, `LIVE_ONLY`). Der Bot sieht alle
-  Nachrichten in Räumen, in denen er Mitglied ist und `message.read` hat, und reagiert auf `!…`.
-- **Ausgang:** `MessageService/CreateMessage` per ConnectRPC-JSON, als Antwort auf die auslösende
-  Nachricht (im selben Thread). Das HTML der Commands wird in Markdown übersetzt, `@` wird escaped,
-  damit der Bot niemanden anpingt.
-- `gen/` enthält die mit `protoc-gen-es@1.10.1` erzeugten Protobuf-Bindings aus `proto/` von
-  **Chatto v0.5.0-beta.8** (Realtime-/Message-Protos unverändert bis beta.10). Bei einem Chatto-Update neu erzeugen, wenn sich das Realtime-Protokoll ändert.
-- **3D-Würfel:** `!roll` hängt die gewürfelten Würfel als Marker-Link `[🎲](#chatto-dice:…)` an die
-  Antwort (Format: `../fork/README.md`). Der gepatchte Chatto-Client rollt sie in 3D; mit
-  `DICE_3D=false` in `.env` lässt der Bot den Marker weg.
-- Daten (Inventar, Charakter, Mode) liegen pro Chatto-User-ID unter `storage/`.
+## Commands
+
+| Command | |
+|---|---|
+| `!system dh` / `!system swade` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
+| `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
+| `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
+| `!help` / `!hilfe` | Hilfe zum System des Raums |
+
+**Daggerheart:** `!roll` = Duality Dice (2d12 Hope + Fear), `+N`/`-N`, `adv`/`dis` (±d6).
+Im GM-Modus 1d20 (GM's Die), kritisch auf natürliche 20.
+
+**Savage Worlds:** `!roll d8+2` = Eigenschaftswurf mit Wild Die (d6), beide explodieren, der höhere
+zählt; Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden = kritischer Fehlschlag.
+`!roll dmg d8+2d6+1` = Schaden (alle Würfel explodieren und werden addiert, kein Wild Die).
+Im GM-Modus ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards).
+
+In beiden Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
+`DEFAULT_MACROS`.
+
+**3D-Würfel:** Jede Antwort bekommt einen Marker-Link `[🎲](#chatto-dice:…)` (Format: README im
+Repo-Root). Der gepatchte Chatto-Client rollt die Würfel in 3D, bei Savage Worlds mit Wild Die und
+Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marker weg.
 
 ## Einrichtung
 
 1. Chatto: **Server Admin → Bots → Create Bot** (Username `pantheon`), API-Key kopieren.
 2. Auf der Detailseite des Bots für die gewünschten Räume (oder die Raumgruppe) erlauben:
    `room.join`, `message.read`, `message.post`. Danach in der **Joined**-Zeile die Räume anhaken.
-3. Auf he1 in `selfhosted-services/he1/chatto/pantheon/.env` `CHATTO_API_KEY` eintragen (Vorlage: `.env.example`).
-4. Image kommt aus GHCR (`ghcr.io/lizzard77/chatto-pantheon`, gebaut von `.github/workflows/images.yml`):
-   auf he1 in `he1/chatto` → `docker compose pull pantheon && docker compose up -d pantheon`
+3. `.env` nach `.env.example` anlegen, `CHATTO_API_KEY` eintragen.
+4. Image kommt aus GHCR (`ghcr.io/lizzard77/chatto-pantheon`, gebaut von `.github/workflows/images.yml`);
+   `storage/` als Volume mounten.
 
-Protobuf-Bindings neu erzeugen (für eine neue Chatto-Version `vX.Y.Z`):
+Lokal gegen den Dev-Server: `npm ci && CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs`.
+
+## Protobuf-Bindings neu erzeugen
+
+Nötig, wenn sich bei einem Chatto-Update das Realtime-Protokoll ändert:
 
 ```sh
-npm i -D @bufbuild/protoc-gen-es@1.10.1 @bufbuild/buf
-git -C <chatto-checkout> archive vX.Y.Z proto | tar -x
-npx buf generate proto --template buf.gen.yaml --path proto/chatto/realtime --path proto/chatto/api
+npm i --no-save @bufbuild/protoc-gen-es@1.10.1 @bufbuild/buf
+git -C ../../upstream archive HEAD proto | tar -x
+rm -rf gen && npx buf generate proto --template buf.gen.yaml --path proto/chatto/realtime
+rm -rf proto buf.gen.yaml && echo '{ "type": "module" }' > gen/package.json
 ```
 
-`buf.gen.yaml`:
+Das erzeugt zusätzlich ein paar Dateien, die der Bot nicht lädt (z. B. `buf/validate/`); sie
+können weg. `buf.gen.yaml` (`include_imports` erzeugt auch die importierten API-Protos):
 
 ```yaml
 version: v2
 plugins:
   - local: node_modules/.bin/protoc-gen-es
     out: gen
+    include_imports: true
     opt: [target=js, import_extension=.js]
 ```

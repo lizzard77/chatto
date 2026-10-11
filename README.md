@@ -13,7 +13,7 @@ to the version in `CHATTO_VERSION` with all patches applied as commits.
 | `patches/` | Changes to the upstream code (`git am` format), see below |
 | `docker/chatto.Dockerfile` | Builds the upstream tag plus patches and puts the binary on top of the official image |
 | `.github/workflows/images.yml` | Builds and pushes `ghcr.io/lizzard77/chatto` and `ghcr.io/lizzard77/chatto-pantheon` |
-| `bots/pantheon/` | Daggerheart dice bot (container image from GHCR) |
+| `bots/pantheon/` | Dice bot for Daggerheart and Savage Worlds (container image from GHCR) |
 | `bots/erato/` | Music bot that streams a local audio source into a voice call |
 | `tools/update-check/` | Optional daily job: new upstream release → rebase patches → build image |
 | `scripts/` | Check out upstream, build, run a dev server, export patches |
@@ -85,7 +85,7 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   stored as the fragment `#chatto-embed` in the saved link URL, so the server needs no change. The
   embedded site must allow framing (no `X-Frame-Options: DENY`, a matching `frame-ancestors`).
 
-- `0002-3d-dice.patch` – 3D dice for dice bots. When a bot message with a dice marker link arrives
+- `0002-3d-dice.patch` – 3D dice for dice bots (Daggerheart and Savage Worlds). When a bot message with a dice marker link arrives
   live in the open room or thread, the dice tumble across the window; the 🎲 in the message replays
   the roll. Per device under **Settings → Appearance → 3D dice**: *All rolls*, *Only my rolls* or
   *Off* (off by default with "reduce motion"). Own dependency-free WebGL renderer, loaded on the
@@ -115,14 +115,17 @@ Each patch applies on its own and in any order (the image build uses plain `git 
 The only coupling between a dice bot and the renderer is this text format in the message body:
 
 ```
-[🎲](#chatto-dice:<kind>.<sides>.<value>,<kind>.<sides>.<value>,…;by=<userId>)
+[🎲](#chatto-dice:<kind>.<sides>.<value>,<kind>.<sides>.<value>,…;by=<userId>;sw=<outcome>)
 ```
 
 - `;by=<userId>` (optional): Chatto user ID of the person who rolled – the message author is the bot.
   Without `by`, the roll does not play with "Only my rolls".
+- `;sw=<outcome>` (optional): result of a Savage Worlds trait roll, shown as a banner: `cf` (critical
+  failure), `fail`, `ok` (success), `r1`…`r9` (success with raises). Parameters may come in any order.
 - `kind`: `hope`, `fear` (Daggerheart duality dice, gold/violet and labelled; together they produce
   the "with Hope / with Fear / Critical success" banner), `adv`/`dis` (d6 advantage/disadvantage),
-  `gm` (GM's die), `std`, `drop` (discarded die, grey)
+  `gm` (GM's die), `wild` (Savage Worlds Wild Die, orange and labelled), `std`, `drop` (discarded die,
+  grey). Exploding dice are listed once per roll.
 - `sides`: 4, 6, 8, 10, 12, 20, 100 (d100 = tens and units d10); other sizes are ignored
 - at most 24 dice; an invalid marker stays an ordinary (dead) link
 

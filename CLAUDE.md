@@ -51,7 +51,7 @@ Fork features communicate through **marker links in message bodies** rather than
 
 Plain Node ESM, no build step, `npm ci` + `node`.
 
-- `pantheon/` — Daggerheart dice bot. `bot.mjs` is the Chatto adapter: realtime WebSocket (`/api/realtime`, `LIVE_ONLY`) in, ConnectRPC-JSON `MessageService/CreateMessage` out; command HTML is converted to Markdown with `@` escaped. Commands in `commands/`, per-user storage in `storage/` (gitignored). `gen/` is generated protobuf code (`protoc-gen-es@1.10.1`) — don't hand-edit. `!roll` emits the dice marker unless `DICE_3D=false`. Run against the dev server: `CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs` (create the bot under Server Admin → Bots).
+- `pantheon/` — dice bot for Daggerheart and Savage Worlds (`!system dh|swade` per room, `!gm`/`!dm` per user). `bot.mjs` = transport + command dispatch (realtime WebSocket `/api/realtime` in, ConnectRPC-JSON `MessageService/CreateMessage` out, Markdown with `@` escaped); `rolls.mjs` = dice rules returning `{ text, dice, swade }`; `storage.mjs` = `storage/state.json` (gitignored). `gen/` is generated protobuf code (`protoc-gen-es@1.10.1`, realtime proto + imports only) — don't hand-edit. Replies carry the dice marker unless `DICE_3D=false`. Run against the dev server: `CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs` (create the bot under Server Admin → Bots).
 - `erato/` — runs locally only; joins a voice call via `VoiceCallService/JoinCall` + LiveKit (`@livekit/rtc-node`) and streams a PipeWire/Pulse virtual sink or a file. Needs `ffmpeg` and `pactl`.
 
 ## CI / images

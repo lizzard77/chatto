@@ -1,27 +1,21 @@
 /**
- * Pantheon – Daggerheart Dice Bot für Chatto
+ * Pantheon – Würfel-Bot für Chatto (Daggerheart und Savage Worlds)
  * Hört per Realtime-WebSocket auf alle Nachrichten in Räumen, in denen der Bot
  * Mitglied ist, und antwortet über die ConnectRPC-API (JSON).
  */
 
-import { createRequire } from 'node:module';
 import {
     RealtimeServerFrame,
     RealtimeSubscribe,
     RealtimeInitialState
 } from './gen/chatto/realtime/v1/realtime_pb.js';
-
-const require = createRequire(import.meta.url);
-const helpCommand = require('./commands/help');
-const rollCommand = require('./commands/roll');
-const inventoryCommand = require('./commands/inventory');
-const characterCommand = require('./commands/character');
-const { getUserMode, setUserMode } = require('./utils/storage');
+import { SYSTEMS, helpText, modeText, roll } from './rolls.mjs';
+import { isGm, roomSystem, setGm, setRoomSystem } from './storage.mjs';
 
 // Konfiguration
 const chattoUrl = (process.env.CHATTO_URL || 'http://chatto:4000').replace(/\/$/, '');
 const apiKey = process.env.CHATTO_API_KEY;
-const commandPrefix = process.env.COMMAND_PREFIX || '!';
+const prefix = process.env.COMMAND_PREFIX || '!';
 // 3D-Würfel im Chatto-Fork (Patch 0002): Würfel als Marker-Link an die Antwort hängen
 const dice3d = process.env.DICE_3D !== 'false';
 
@@ -29,9 +23,9 @@ const PROTOCOL_VERSION = 4;
 const HEARTBEAT_STALL_MS = 75_000;
 const MAX_RECONNECT_MS = 30_000;
 
-let defaultMacros = {};
+let macros = {};
 try {
-    defaultMacros = JSON.parse(process.env.DEFAULT_MACROS || '{}');
+    macros = JSON.parse(process.env.DEFAULT_MACROS || '{}');
 } catch (e) {
     console.warn('Warnung: DEFAULT_MACROS konnte nicht geparst werden:', e.message);
 }
@@ -63,118 +57,83 @@ async function rpc(service, method, body = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// Ausgabe: Die Commands liefern (plain, html) im Matrix-Stil. Chatto speichert
-// Nachrichten als Markdown, also wird das HTML in Markdown übersetzt.
+// Antworten
 // ---------------------------------------------------------------------------
 
-function htmlToMarkdown(html) {
-    return html
-        .replace(/\r?\n/g, '')
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/?font[^>]*>/gi, '')
-        .replace(/<\/?(b|strong)>/gi, '**')
-        .replace(/<\/?(i|em)>/gi, '_')
-        .replace(/<\/?code>/gi, '`')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&')
-        .replace(/\n{3,}/g, '\n\n')
-        // Bot-Antworten sollen niemanden anpingen
-        .replace(/@/g, '\\@')
-        .trim();
-}
-
 // Gepatchte Clients rollen die Würfel in 3D und zeigen 🎲 als Replay-Button,
-// andere sehen einen harmlosen 🎲-Link. Format: ../fork/README.md (Würfel-Marker).
-// `;by=` nennt den Würfelnden (Autor der Nachricht ist ja der Bot), für „nur meine Würfe“.
-function diceMarker(dice, rollerId) {
+// andere sehen einen harmlosen 🎲-Link. Format: README des Forks (Würfel-Marker).
+// `;by=` nennt den Würfelnden (Autor der Nachricht ist ja der Bot), für „nur meine Würfe“;
+// `;sw=` ist das Ergebnis eines Savage-Worlds-Eigenschaftswurfs für das Banner.
+function diceMarker(dice, rollerId, swade) {
     const entries = (dice || [])
         .filter(d => d.value >= 1 && d.value <= d.sides)
         .slice(0, 24)
         .map(d => `${d.kind}.${d.sides}.${d.value}`);
     if (!entries.length) return '';
     const by = /^[\w-]{1,64}$/.test(rollerId || '') ? `;by=${rollerId}` : '';
-    return ` [🎲](#chatto-dice:${entries.join(',')}${by})`;
+    const sw = swade === undefined ? ''
+        : `;sw=${typeof swade === 'number' ? (swade > 0 ? `r${Math.min(swade, 9)}` : 'ok') : swade}`;
+    return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw})`;
 }
 
-function makeSender(message) {
-    return async function sendHtmlMessage(roomId, plain, html, dice) {
-        let body = html ? htmlToMarkdown(html) : plain;
-        if (dice3d) body += diceMarker(dice, message.sender);
-        await rpc('chatto.api.v1.MessageService', 'CreateMessage', {
-            roomId,
-            body,
-            threadRootEventId: message.threadRootEventId || undefined,
-            inReplyTo: message.eventId
-        });
-    };
+async function reply(message, { text, dice, swade }) {
+    // Bot-Antworten sollen niemanden anpingen
+    let body = text.replace(/@/g, '\\@');
+    if (dice3d) body += diceMarker(dice, message.sender, swade);
+    await rpc('chatto.api.v1.MessageService', 'CreateMessage', {
+        roomId: message.roomId,
+        body,
+        threadRootEventId: message.threadRootEventId || undefined,
+        inReplyTo: message.eventId
+    });
 }
 
 // ---------------------------------------------------------------------------
-// Command-Dispatch
+// Commands
 // ---------------------------------------------------------------------------
 
 let botUserId = null;
 
 async function handleCommand(message) {
     const { roomId, sender, body } = message;
-    const args = body.trim().split(/\s+/);
-    const command = args[0].toLowerCase();
-    const commandArgs = args.slice(1);
-    const send = makeSender(message);
+    const [first, ...args] = body.trim().split(/\s+/);
+    const command = first.slice(prefix.length).toLowerCase();
+    const system = roomSystem(roomId);
+    const gm = isGm(sender);
+    const send = (text) => reply(message, { text });
 
-    if (command === `${commandPrefix}help` || command === `${commandPrefix}hilfe`) {
-        await helpCommand.execute(null, roomId, send);
-        return;
-    }
+    switch (command) {
+        case 'roll':
+        case 'r':
+            return reply(message, roll(args, { system, gm, macros }));
 
-    if (command === `${commandPrefix}roll` || command === `${commandPrefix}r`) {
-        await rollCommand.execute(null, roomId, commandArgs, sender, send, defaultMacros);
-        return;
-    }
+        case 'system': {
+            const wanted = args[0]?.toLowerCase();
+            if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\` oder \`!system swade\`.`);
+            if (!SYSTEMS[wanted]) return send(`❌ Unbekanntes System \`${args[0]}\` — \`dh\` (Daggerheart) oder \`swade\` (Savage Worlds)`);
+            await setRoomSystem(roomId, wanted);
+            return send(`🎲 System in diesem Raum: **${SYSTEMS[wanted]}**\n${modeText(wanted, gm)}`);
+        }
 
-    if (command === `${commandPrefix}inventory` || command === `${commandPrefix}inv`) {
-        await inventoryCommand.execute(null, roomId, commandArgs, sender, send);
-        return;
-    }
+        case 'gm':
+        case 'dm':
+            await setGm(sender, true);
+            return send(`**GM-Modus aktiviert.** ${modeText(system, true)} — zurück mit \`!player\``);
 
-    if (command === `${commandPrefix}char` || command === `${commandPrefix}character`) {
-        // "@name" im Text → User-ID aus den Mentions der Nachricht
-        const resolveUser = () => message.mentionedUserIds[0] || null;
-        await characterCommand.execute(null, roomId, commandArgs, sender, send, resolveUser);
-        return;
-    }
+        case 'player':
+            await setGm(sender, false);
+            return send(`**Spieler-Modus aktiviert.** ${modeText(system, false)}`);
 
-    if (command === `${commandPrefix}gm`) {
-        await setUserMode(sender, 'gm');
-        await send(roomId,
-            `👹 GM-Mode aktiviert — !roll würfelt jetzt 1d20 (GM's Die).`,
-            `👹 <b>GM-Mode aktiviert</b> — <code>!roll</code> würfelt jetzt <b>1d20</b> (GM's Die). Zurück mit <code>!player</code>.`);
-        return;
-    }
+        case 'mode':
+            return send(`${SYSTEMS[system]} · ${modeText(system, gm)}`);
 
-    if (command === `${commandPrefix}player`) {
-        await setUserMode(sender, 'player');
-        await send(roomId,
-            `🗡️ Player-Mode aktiviert — !roll würfelt jetzt Duality Dice (2d12 Hope+Fear).`,
-            `🗡️ <b>Player-Mode aktiviert</b> — <code>!roll</code> würfelt jetzt <b>Duality Dice</b> (2d12 Hope+Fear).`);
-        return;
-    }
+        case 'help':
+        case 'hilfe':
+            return send(helpText(system));
 
-    if (command === `${commandPrefix}mode`) {
-        const isGm = (await getUserMode(sender)) === 'gm';
-        await send(roomId,
-            isGm ? `👹 Aktueller Mode: GM (1d20)` : `🗡️ Aktueller Mode: Player (2d12 Hope+Fear)`,
-            isGm ? `👹 Aktueller Mode: <b>GM</b> (1d20)` : `🗡️ Aktueller Mode: <b>Player</b> (2d12 Hope+Fear)`);
-        return;
-    }
-
-    // Unbekannter Command – Hilfe anzeigen
-    if (command.startsWith(commandPrefix) && command.length > commandPrefix.length) {
-        await helpCommand.execute(null, roomId, send);
+        default:
+            // Unbekannter Command – Hilfe anzeigen
+            if (command) return send(helpText(system));
     }
 }
 
@@ -205,11 +164,7 @@ async function handleEvent(event) {
     const body = posted.bodyPlaintext;
     if (!sender || sender === botUserId || !body) return;
     if (posted.echoOfEventId) return;
-    if (!body.trimStart().startsWith(commandPrefix)) return;
-
-    const mentionedUserIds = posted.mentions
-        .filter(m => m.cause.case === 'direct' && m.cause.value.userId !== botUserId)
-        .map(m => m.cause.value.userId);
+    if (!body.trimStart().startsWith(prefix)) return;
 
     try {
         await handleCommand({
@@ -217,8 +172,7 @@ async function handleEvent(event) {
             roomId: posted.roomId,
             threadRootEventId: posted.threadRootEventId,
             sender,
-            body: body.trim(),
-            mentionedUserIds
+            body: body.trim()
         });
     } catch (error) {
         console.error(`❌ Fehler bei "${body.trim()}":`, error.message);
@@ -333,9 +287,9 @@ async function startBot() {
     console.log('🎲 Pantheon gestartet!');
     console.log(`   Bot User ID: ${botUserId}`);
     console.log(`   Chatto: ${chattoUrl}`);
-    console.log(`   Command Prefix: ${commandPrefix}`);
+    console.log(`   Command Prefix: ${prefix}`);
     console.log(`   3D-Würfel: ${dice3d ? 'an' : 'aus'}`);
-    console.log(`   Standard Macros: ${Object.keys(defaultMacros).join(', ') || 'keine'}`);
+    console.log(`   Makros: ${Object.keys(macros).join(', ') || 'keine'}`);
     connect();
 }
 
