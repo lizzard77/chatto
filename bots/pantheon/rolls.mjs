@@ -229,36 +229,38 @@ export function modeText(system, gm) {
     return gm ? '👹 GM: `!roll` = 1d20 (GM\'s Die)' : '🗡️ Spieler: `!roll` = Duality Dice (2d12 Hope + Fear)';
 }
 
+const HELP = {
+    dh: [
+        '🗡️ **Daggerheart** (`!system dh`)',
+        '`!roll` → Duality Dice (2d12 Hope + Fear); höherer Würfel bestimmt Hoffnung/Furcht, Pasch = kritisch',
+        '`!roll +2`, `!roll -1` → Modifikator',
+        '`!roll adv` / `!roll dis` → Vorteil (+d6) / Nachteil (−d6), kombinierbar: `!roll +2 adv`',
+        'GM-Modus: `!roll +3` = 1d20+3 (GM\'s Die), kritisch auf natürliche 20; adv/dis wie oben'
+    ],
+    swade: [
+        '⚔️ **Savage Worlds** (`!system swade`)',
+        '`!roll d8+2` → Eigenschaftswurf: d8 und Wild Die (d6), beide explodieren, der höhere zählt;',
+        'Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden Würfeln = kritischer Fehlschlag',
+        '`!roll d4-2` → ungeübt',
+        '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
+        'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards)'
+    ]
+};
+
 export function helpText(system) {
-    const common = [
+    const other = system === 'swade' ? 'dh' : 'swade';
+    return [
+        `🎲 **Pantheon** — System in diesem Raum: **${SYSTEMS[system]}**`,
+        '',
+        ...HELP[system],
+        '',
+        ...HELP[other],
         '',
         '**Modus und System**',
         '`!system dh` / `!system swade` → System für diesen Raum umschalten (`!system` zeigt es an)',
         '`!gm` (oder `!dm`) → GM-Modus, `!player` → zurück, `!mode` → aktueller Modus',
+        '`!help` → diese Hilfe',
         '',
-        '`!roll 2d6+3`, `!roll 4d6kh3` → freie Würfelnotation, auch Makros wie `!roll fireball`'
-    ];
-    if (system === 'swade') {
-        return [
-            '⚔️ **Pantheon — Savage Worlds**',
-            '',
-            '`!roll d8+2` → Eigenschaftswurf: d8 und Wild Die (d6), beide explodieren, der höhere zählt',
-            'Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden Würfeln = kritischer Fehlschlag',
-            '`!roll d4-2` → ungeübt',
-            '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
-            '',
-            '**GM-Modus:** `!roll d8+1` würfelt ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards)',
-            ...common
-        ].join('\n');
-    }
-    return [
-        '🗡️ **Pantheon — Daggerheart**',
-        '',
-        '`!roll` → Duality Dice (2d12 Hope + Fear); höherer Würfel bestimmt Hoffnung/Furcht, Pasch = kritisch',
-        '`!roll +2`, `!roll -1` → Modifikator',
-        '`!roll adv` / `!roll dis` → Vorteil (+d6) / Nachteil (−d6), kombinierbar: `!roll +2 adv`',
-        '',
-        '**GM-Modus:** `!roll +3` = 1d20+3 (GM\'s Die), kritisch auf natürliche 20; adv/dis wie oben',
-        ...common
+        'In beiden Systemen: `!roll 2d6+3`, `!roll 4d6kh3` → freie Würfelnotation, auch Makros wie `!roll fireball`'
     ].join('\n');
 }

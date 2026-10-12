@@ -17,7 +17,7 @@
 | `!system dh` / `!system swade` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
 | `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
 | `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
-| `!help` / `!hilfe` | Hilfe zum System des Raums |
+| `!help` / `!hilfe` | Hilfe zu beiden Systemen, das des Raums zuerst |
 
 **Daggerheart:** `!roll` = Duality Dice (2d12 Hope + Fear), `+N`/`-N`, `adv`/`dis` (±d6).
 Im GM-Modus 1d20 (GM's Die), kritisch auf natürliche 20.
