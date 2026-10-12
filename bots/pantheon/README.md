@@ -7,6 +7,7 @@
     auslösende Nachricht (im selben Thread). `@` wird escaped, damit der Bot niemanden anpingt.
 - `rolls.mjs` – Würfelregeln und Hilfetexte.
 - `storage.mjs` – `storage/state.json`: GM-Modus pro User, Spielsystem pro Raum.
+- `avatar.svg` / `avatar.png` – Profilbild (in Chatto beim Bot hochladen).
 - `gen/` – Protobuf-Bindings für das Realtime-Protokoll (nur der Realtime-Proto und seine Imports;
   der WebSocket spricht ausschließlich binäres Protobuf).
 

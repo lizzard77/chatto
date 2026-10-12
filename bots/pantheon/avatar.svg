@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#2e6f8e"/>
+      <stop offset="0.6" stop-color="#173c5c"/>
+      <stop offset="1" stop-color="#0a1a30"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe9a3"/>
+      <stop offset="0.5" stop-color="#f2c14e"/>
+      <stop offset="1" stop-color="#c98a1b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Tempel: Giebel, Gebälk, vier Säulen, Stufen -->
+  <g fill="url(#gold)">
+    <path d="M256 70 L428 176 L84 176 Z"/>
+    <rect x="96" y="186" width="320" height="22" rx="4"/>
+    <rect x="124" y="222" width="34" height="164" rx="6"/>
+    <rect x="200" y="222" width="34" height="164" rx="6"/>
+    <rect x="278" y="222" width="34" height="164" rx="6"/>
+    <rect x="354" y="222" width="34" height="164" rx="6"/>
+    <rect x="96" y="394" width="320" height="18" rx="4"/>
+    <rect x="76" y="418" width="360" height="20" rx="4"/>
+  </g>
+
+  <!-- d20 im Giebelfeld -->
+  <g transform="translate(256 130) scale(0.85)" fill="none" stroke="#173c5c" stroke-width="6" stroke-linejoin="round">
+    <path d="M0 -40 L35 -20 L35 20 L0 40 L-35 20 L-35 -20 Z"/>
+    <path d="M0 -20 L18 12 L-18 12 Z"/>
+    <path d="M0 -40 L0 -20 M35 -20 L18 12 M35 20 L18 12 M0 40 L18 12 M0 40 L-18 12 M-35 20 L-18 12 M-35 -20 L-18 12 M-35 -20 L0 -20 M35 -20 L0 -20" stroke-width="4"/>
+  </g>
+
+  <!-- Funken der Hoffnung und Furcht -->
+  <g opacity="0.9">
+    <path fill="#ffe9a3" d="M66 96 l6 16 16 6 -16 6 -6 16 -6 -16 -16 -6 16 -6 z"/>
+    <path fill="#c79bf2" d="M446 84 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5 z"/>
+    <path fill="#ffe9a3" d="M450 300 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 z"/>
+    <path fill="#c79bf2" d="M58 292 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 z"/>
+  </g>
+</svg>
