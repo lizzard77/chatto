@@ -23,23 +23,12 @@ Die Skripte laufen auch lokal (`tools/update-check/auto-update.sh` im Repo-Root 
 HERMES_HOME = `/opt/data` (= `/mnt/user/appdata/hermes/data` auf dem nas). Go kommt aus dem Hermes-Dockerfile
 (`selfhosted-services/nas/hermes`), Node/npx aus dem Basis-Image.
 
-1. Deploy-Keys (je Repo einer, GitHub erlaubt keinen Key in zwei Repos): `~/.ssh/gh_chatto` mit Schreibrecht
-   auf `lizzard77/chatto`, `~/.ssh/gh_selfhosted` mit Schreibrecht auf `lizzard77/selfhosted-services`;
-   in `~/.ssh/config` als `Host github-chatto` / `Host github-selfhosted` (HostName github.com, IdentitiesOnly).
-2. Klone in `~/workspace/`:
+Alles Weitere macht `hermes-setup.sh` (idempotent): Deploy-Keys je Repo (`~/.ssh/gh_chatto`,
+`~/.ssh/gh_selfhosted`, Hosts `github-chatto`/`github-selfhosted`), Klone in `~/workspace/chatto` und
+`~/workspace/selfhosted-services`, Skill-Link `~/skills/devops/chatto-update`, Pre-run-Skript
+`~/scripts/chatto-update.sh` und der Cron-Job (`0 10 * * *`, `--workdir ~/workspace/chatto`, `--deliver bot-chat:default`).
 
-       git clone -b fork github-chatto:lizzard77/chatto.git ~/workspace/chatto
-       git clone github-selfhosted:lizzard77/selfhosted-services.git ~/workspace/selfhosted-services
-       # in beiden: git config user.name "Phil Reif"; git config user.email pr@sambal.net
+    curl -fsSL https://raw.githubusercontent.com/lizzard77/chatto/fork/tools/update-check/hermes-setup.sh \
+      | docker exec -i -u hermes hermes bash
 
-3. Skill und Skript verlinken:
-
-       ln -s ~/workspace/chatto/tools/update-check/skill ~/skills/devops/chatto-update
-       printf '#!/usr/bin/env bash\nexport HOME=/opt/data\nexec /opt/data/workspace/chatto/tools/update-check/auto-update.sh\n' \
-         > ~/scripts/chatto-update.sh && chmod +x ~/scripts/chatto-update.sh
-
-4. Job:
-
-       hermes cron create "0 10 * * *" "Chatto-Update-Check: Bericht des Pre-run-Skripts auswerten (Skill chatto-update)." \
-         --name chatto-update --skill chatto-update --script chatto-update.sh \
-         --workdir /opt/data/workspace/chatto --deliver bot-chat:default
+Der erste Lauf bricht ab und zeigt die `gh repo deploy-key add …`-Befehle für die neuen Keys; danach erneut ausführen.
