@@ -5,6 +5,8 @@
 #     | docker exec -i -u hermes hermes bash
 # Erster Lauf erzeugt die Deploy-Keys und bricht ab, bis sie auf GitHub eingetragen sind.
 set -euo pipefail
+# Als Block geparst und mit stdin=/dev/null ausgeführt: das Skript kommt per Pipe, ssh/git/hermes sollen es nicht mitlesen
+{
 export HOME=/opt/data
 W=$HOME/workspace
 
@@ -30,7 +32,8 @@ Host github-selfhosted
 EOF
 ok=1
 for n in chatto selfhosted; do
-  ssh -o BatchMode=yes -T github-$n 2>&1 | grep -q 'successfully authenticated' || { ok=0
+  out=$(ssh -n -o BatchMode=yes -T github-$n 2>&1 || true)
+  grep -q 'successfully authenticated' <<<"$out" || { ok=0
     echo "!! Deploy-Key gh_$n fehlt auf GitHub. Lokal eintragen (mit Schreibrecht):"
     repo=$([ $n = chatto ] && echo chatto || echo selfhosted-services)
     echo "   echo '$(cat gh_$n.pub)' > /tmp/gh_$n.pub && gh repo deploy-key add /tmp/gh_$n.pub -R lizzard77/$repo -w -t hermes-nas"; }
@@ -55,7 +58,7 @@ chmod +x ~/scripts/chatto-update.sh
 go version; node --version
 
 # 5. Cron-Job
-if hermes cron list 2>/dev/null | grep -q 'Name: *chatto-update$'; then
+if grep -q 'Name: *chatto-update$' <<<"$(hermes cron list 2>/dev/null)"; then
   echo "Cron-Job chatto-update existiert schon."
 else
   hermes cron create "0 10 * * *" \
@@ -64,3 +67,4 @@ else
     --workdir "$W/chatto" --deliver bot-chat:default
 fi
 echo "== fertig. Testlauf: hermes cron run <id>  (Log: ~/.local/state/chatto-update-check/)"
+} </dev/null
