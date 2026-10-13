@@ -91,6 +91,6 @@ PROTO="$(git -C upstream diff --stat "v$OLD" "v$NEW" -- proto/chatto/realtime pr
 report done "COMMIT: ${SHA:0:9}
 PATCHES_3WAY: $THREEWAY (Patches, die nur per 3-way-Merge passten)
 PATCH_DIFF (Änderungen an patches/ ohne Index-/Offset-Rauschen):
-$(git show "$SHA" -- patches | grep -E '^[+-][^+-]' | grep -vE '^[+-](index |@@|From [0-9a-f]{40})' | head -60)
+$(git show "$SHA" -- patches | grep -E '^[+-][^+-]' | grep -vE '^[+-](index |@@|From [0-9a-f]{40}|[0-9]+\.[0-9]+\.[0-9]+$)' | head -60)
 PROTO_DIFF:
 ${PROTO:-keine}"
