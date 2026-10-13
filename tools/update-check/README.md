@@ -13,8 +13,6 @@ Bot Chat. Deploy bleibt manuell.
 - `wait-build.sh <sha> [s]` – wartet auf `images.yml` (öffentliche GitHub-API); Exit 2 = läuft noch
 - `bump-compose.sh <v>` – Image-Tag in `selfhosted-services/he1/chatto/docker-compose.yml`, commit + push
 - `skill/SKILL.md` – Hermes-Skill `chatto-update`: was der Agent je nach `STATUS` tut
-- `notify.sh` / `notify.js` – DM von Pantheon an Phil (per SSH im `chatto-pantheon`-Container auf he1);
-  vom Job nicht mehr benutzt, aber wiederverwendbar
 
 Die Skripte laufen auch lokal (`tools/update-check/auto-update.sh` im Repo-Root eines sauberen `fork`-Checkouts).
 
