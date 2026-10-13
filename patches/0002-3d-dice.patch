@@ -17,7 +17,7 @@ per device in Settings → Appearance (off by default with reduced motion).
 ---
  apps/frontend/messages/de-DE/dice.json        |  37 +
  apps/frontend/messages/en-GB/dice.json        |  37 +
- apps/frontend/scripts/check-bundle-size.mjs   |   6 +-
+ apps/frontend/scripts/check-bundle-size.mjs   |   9 +-
  .../settings/AppAppearanceSettings.svelte     |  24 +
  apps/frontend/src/lib/dice/dice.svelte.ts     | 121 +++
  apps/frontend/src/lib/dice/diceGeometry.ts    | 272 +++++++
@@ -27,7 +27,7 @@ per device in Settings → Appearance (off by default with reduced motion).
  apps/frontend/src/lib/markdown.ts             |  31 +
  apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   9 +
  .../[roomId]/ConversationPane.svelte          |   9 +
- 12 files changed, 1342 insertions(+), 2 deletions(-)
+ 12 files changed, 1344 insertions(+), 3 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/dice.json
  create mode 100644 apps/frontend/messages/en-GB/dice.json
  create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
@@ -122,26 +122,36 @@ index 000000000..820867716
 +  }
 +}
 diff --git a/apps/frontend/scripts/check-bundle-size.mjs b/apps/frontend/scripts/check-bundle-size.mjs
-index 1efebcc9a..62cc3f621 100644
+index b9c36391c..b2066c131 100644
 --- a/apps/frontend/scripts/check-bundle-size.mjs
 +++ b/apps/frontend/scripts/check-bundle-size.mjs
-@@ -18,7 +18,8 @@ const routes = [
-     // added about 3.6 KiB of global CSS and preference code.
-     // Shared narrow-page panel styles add a small global CSS payload.
+@@ -20,7 +20,8 @@ const routes = [
      // CI measured 337.1 KiB; retain allowance for build variation.
--    budgetKiB: 337.5,
-+    // lizzard fork: +1.5 KiB for the fork patches.
-+    budgetKiB: 339,
+     // LiveKit diagnostics strings in the bundled en-GB fallback catalog add
+     // about 0.7 KiB.
+-    budgetKiB: 338.5,
++    // lizzard fork: +3.5 KiB for the fork patches.
++    budgetKiB: 342,
      components: ['src/routes/+layout.svelte', 'src/routes/login/+page.svelte']
    },
    {
-@@ -27,7 +28,8 @@ const routes = [
-     // added about 3.7 KiB of global CSS and preference code.
-     // Server gutter ordering adds about 1.7 KiB; drag code stays lazy.
+@@ -31,7 +32,8 @@ const routes = [
      // Footnote layout and local navigation add about 0.6 KiB in CI.
--    budgetKiB: 381,
-+    // lizzard fork: +2 KiB for the sidebar iframe and 3D dice patches.
-+    budgetKiB: 383,
+     // LiveKit diagnostics strings in the bundled en-GB fallback catalog add
+     // about 0.7 KiB.
+-    budgetKiB: 382,
++    // lizzard fork: +4 KiB for the sidebar iframe and 3D dice patches.
++    budgetKiB: 386,
+     components: [
+       'src/routes/+layout.svelte',
+       'src/routes/chat/+layout.svelte',
+@@ -42,7 +44,8 @@ const routes = [
+   {
+     name: 'room',
+     // CI baseline: 515.8 KiB, with roughly 10% headroom.
+-    budgetKiB: 570,
++    // lizzard fork: +3 KiB for the fork patches.
++    budgetKiB: 573,
      components: [
        'src/routes/+layout.svelte',
        'src/routes/chat/+layout.svelte',
@@ -1421,10 +1431,10 @@ index 2d2ef1fcb..eaad03736 100644
    'error_page',
    'media',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 3f8ad76a3..e0179ec58 100644
+index 117969565..ca63b9d2c 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
-@@ -8,6 +8,7 @@ import tlds from 'tlds';
+@@ -8,6 +8,7 @@ import { configureMarkdownLinks } from './markdownLinks';
  import { classifyMessageBodyChatLink } from '$lib/messageLinks';
  import { collectMentionHandles, MENTIONS_ENV_KEY, mentionPlugin } from '$lib/markdownMentions';
  import { m } from '$lib/i18n/messages';
@@ -1467,7 +1477,7 @@ index 3f8ad76a3..e0179ec58 100644
  async function ensureFenceLanguagesLoaded(languages: string[]): Promise<void> {
    if (languages.length === 0) return;
  
-@@ -486,6 +515,8 @@ function initialize(): void {
+@@ -484,6 +513,8 @@ function initialize(): void {
    // Recognize @mentions in the token tree after linkify, so URLs, links,
    // code, and blockquotes keep their text. See `$lib/markdownMentions`.
    md.use(mentionPlugin);
@@ -1497,10 +1507,10 @@ index 6052fb02a..52d63bf7e 100644
      if (!button) return;
  
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index d00f6438d..75ac595f9 100644
+index eade13e41..e7facbb2d 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-@@ -62,6 +62,7 @@ thread IDs can change while the pane stays mounted.
+@@ -64,6 +64,7 @@ thread IDs can change while the pane stays mounted.
    import { isMessagePostedEvent } from '@chatto/client/timeline/timelineEvents';
    import { ReadThroughTracker, type TimelineReadPosition } from './readThroughTracker';
    import { clearTimelineViewport } from '$lib/state/room/timelineViewport';
@@ -1508,7 +1518,7 @@ index d00f6438d..75ac595f9 100644
  
    let {
      roomId,
-@@ -299,6 +300,14 @@ thread IDs can change while the pane stays mounted.
+@@ -308,6 +309,14 @@ thread IDs can change while the pane stays mounted.
      const semantic = projectionEvent.event?.event;
      if (semantic?.case !== 'messagePosted' || semantic.value.roomId !== roomId) return;
      if ((semantic.value.threadRootEventId || null) !== threadRootEventId) return;

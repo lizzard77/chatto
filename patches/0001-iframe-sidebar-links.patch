@@ -15,7 +15,7 @@ Subject: [PATCH] Frontend: embed sidebar links in an iframe
  create mode 100644 apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 
 diff --git a/apps/frontend/messages/de-DE/admin.json b/apps/frontend/messages/de-DE/admin.json
-index 44e951fdd..8845cd614 100644
+index 76c14d86e..eae7767ec 100644
 --- a/apps/frontend/messages/de-DE/admin.json
 +++ b/apps/frontend/messages/de-DE/admin.json
 @@ -321,7 +321,11 @@
@@ -32,7 +32,7 @@ index 44e951fdd..8845cd614 100644
      "security": {
        "title": "Sicherheit",
 diff --git a/apps/frontend/messages/en-GB/admin.json b/apps/frontend/messages/en-GB/admin.json
-index 385c86d9c..8c13f5513 100644
+index 0b6e282a6..2e3fdf8d6 100644
 --- a/apps/frontend/messages/en-GB/admin.json
 +++ b/apps/frontend/messages/en-GB/admin.json
 @@ -321,7 +321,11 @@
