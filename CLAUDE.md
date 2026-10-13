@@ -60,7 +60,7 @@ Plain Node ESM, no build step, `npm ci` + `node`.
 
 ## tools/update-check
 
-Daily systemd user timer on the owner's PC that runs `claude -p` with `tools/update-check/prompt.md`: detect new upstream release → rebase patches → build/check → bump `CHATTO_VERSION` → push → wait for the action → bump the image tag in the separate deployment repo → DM via Pantheon (`notify.sh`). Deploy stays manual.
+Hermes cron job `chatto-update` in the Hermes backend on the NAS (daily 10:00, setup via `hermes-setup.sh`). Pre-run script `auto-update.sh` does the deterministic path without an LLM: detect new upstream release → `scripts/upstream.sh` → `build.sh --check` → `release.sh` (export, bump `CHATTO_VERSION`, push) → `wait-build.sh` (images.yml) → `bump-compose.sh` (image tag in the separate deployment repo). The agent (skill `skill/SKILL.md`) only writes the report to Bot Chat or resolves conflicts/build failures. One attempt per version (`~/.local/state/chatto-update-check/attempted-<v>`). Deploy stays manual.
 
 ## Conventions
 
