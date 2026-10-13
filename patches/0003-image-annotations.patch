@@ -1322,7 +1322,7 @@ index 000000000..b59aa6ac1
 +	return strings.Contains(body, imageAnnotationMarker)
 +}
 diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
-index 8d76b4bf5..926316ebd 100644
+index c134d3405..cbf8cdc0e 100644
 --- a/cli/internal/core/messages.go
 +++ b/cli/internal/core/messages.go
 @@ -890,7 +890,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
@@ -1336,5 +1336,5 @@ index 8d76b4bf5..926316ebd 100644
  		if err != nil {
  			c.logger.Warn("Failed to get thread root event",
 -- 
-2.56.0
+2.47.3
 

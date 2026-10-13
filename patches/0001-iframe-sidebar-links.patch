@@ -344,5 +344,5 @@ index 0a49639db..9a8f8d950 100644
  
  {#if deleteGroupConfirmDialogVisible && deleteGroupConfirm}
 -- 
-2.56.0
+2.47.3
 
