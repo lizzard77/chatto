@@ -110,6 +110,14 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   for the image's author), so they cause no thread notifications
   (`cli/internal/core/image_annotations.go` plus one line in `messages.go`).
 
+- `0004-nachtgold-scheme.patch` – the **Nachtgold** colour scheme of the Rollenspiel server
+  (`branding/`): a new surface tone **Navy** (hue 250, chroma 0.075), a new accent colour **Gold**
+  (`oklch(50% 0.105 78)` / `oklch(83% 0.14 85)`), and a one-click preset under **Settings →
+  Appearance → Theme customisation → Colour scheme** that sets the dark theme, the gold accent and the
+  navy tone for both themes. The choice stays per browser like every appearance setting; Chatto has
+  no server-wide default. Frontend only, strings in en-GB and de-DE (as with 0001/0002). Upstream's
+  appearance page spec expects 3 panels and already fails with 0002 (dice panel); 0004 adds none.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:

@@ -10,7 +10,9 @@ dazu Violett für die Furcht aus Daggerheart.
 | `avatar.svg` / `avatar.png` | Runder Avatar mit Goldring, z. B. für Admin- oder Bot-Profile |
 | `generate.py` | Erzeugt beide SVGs; PNGs mit `rsvg-convert -w 512 -h 512 icon.svg -o icon.png` |
 
-## Farben
+## Farben: Schema „Nachtgold“
+
+Im Chatto-Fork wählbar unter Einstellungen → Erscheinungsbild → Farbschema (Patch `0004-nachtgold-scheme`).
 
 | Name | Hex | Verwendung |
 |---|---|---|

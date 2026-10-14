@@ -1,0 +1,356 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Wed, 14 Oct 2026 21:00:18 +0200
+Subject: [PATCH] feat(frontend): add the Nachtgold colour scheme
+
+Add a navy surface tone, a gold accent, and a Nachtgold preset in App
+Preferences that sets the dark theme, the gold accent, and the navy tone
+for both themes in one step.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ apps/frontend/messages/de-DE/settings.json    | 13 ++++-
+ apps/frontend/messages/en-GB/settings.json    | 13 ++++-
+ apps/frontend/src/app.css                     | 17 +++++-
+ apps/frontend/src/app.html                    |  6 ++-
+ apps/frontend/src/appHtml.spec.ts             |  5 +-
+ .../settings/AccentColorPicker.svelte         |  2 +-
+ .../settings/AppAppearanceSettings.svelte     | 14 +++++
+ .../lib/state/userPreferences.svelte.spec.ts  | 19 +++++++
+ .../src/lib/state/userPreferences.svelte.ts   | 52 ++++++++++++++++++-
+ .../appearance.page.svelte.spec.ts            |  2 +-
+ 10 files changed, 130 insertions(+), 13 deletions(-)
+
+diff --git a/apps/frontend/messages/de-DE/settings.json b/apps/frontend/messages/de-DE/settings.json
+index f757ab5be..7ac579930 100644
+--- a/apps/frontend/messages/de-DE/settings.json
++++ b/apps/frontend/messages/de-DE/settings.json
+@@ -216,6 +216,13 @@
+       "save_button": "Zeiteinstellungen speichern",
+       "saved": "Zeiteinstellungen gespeichert",
+       "save_failed": "Zeiteinstellungen konnten nicht gespeichert werden",
++      "scheme": {
++        "title": "Farbschema",
++        "nachtgold": {
++          "label": "Nachtgold",
++          "description": "Dunkles Nachtblau mit Gold, der Look des Rollenspiel-Servers. Setzt Darstellung, Akzentfarbe und Hintergrundfarbe."
++        }
++      },
+       "customization": {
+         "title": "Design anpassen"
+       },
+@@ -229,7 +236,8 @@
+         "orange": "Orange",
+         "pink": "Rosa",
+         "violet": "Violett",
+-        "grey": "Grau"
++        "grey": "Grau",
++        "gold": "Gold"
+       },
+       "tone": {
+         "title": "Hintergrundfarbe",
+@@ -244,7 +252,8 @@
+         "midnight": "Mitternacht",
+         "forest": "Wald",
+         "plum": "Pflaume",
+-        "clay": "Ton"
++        "clay": "Ton",
++        "navy": "Nachtblau"
+       },
+       "contrast": {
+         "label": "Kontrast",
+diff --git a/apps/frontend/messages/en-GB/settings.json b/apps/frontend/messages/en-GB/settings.json
+index 1b3c01b25..fc3614380 100644
+--- a/apps/frontend/messages/en-GB/settings.json
++++ b/apps/frontend/messages/en-GB/settings.json
+@@ -216,6 +216,13 @@
+       "save_button": "Save time settings",
+       "saved": "Time settings saved",
+       "save_failed": "Failed to save time settings",
++      "scheme": {
++        "title": "Colour scheme",
++        "nachtgold": {
++          "label": "Nachtgold",
++          "description": "Dark navy with gold, the look of the Rollenspiel server. Sets the theme, accent colour and background colour."
++        }
++      },
+       "customization": {
+         "title": "Theme customisation"
+       },
+@@ -229,7 +236,8 @@
+         "orange": "Orange",
+         "pink": "Pink",
+         "violet": "Violet",
+-        "grey": "Grey"
++        "grey": "Grey",
++        "gold": "Gold"
+       },
+       "tone": {
+         "title": "Background colour",
+@@ -244,7 +252,8 @@
+         "midnight": "Midnight",
+         "forest": "Forest",
+         "plum": "Plum",
+-        "clay": "Clay"
++        "clay": "Clay",
++        "navy": "Navy"
+       },
+       "contrast": {
+         "label": "Contrast",
+diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
+index 6ae067013..59013454f 100644
+--- a/apps/frontend/src/app.css
++++ b/apps/frontend/src/app.css
+@@ -513,6 +513,11 @@
+   --accent-strong: var(--color-neutral-700);
+   --accent-bright: var(--color-neutral-300);
+ }
++/* Gold of the Nachtgold scheme. The strong step stays dark enough for white labels. */
++[data-accent='gold'] {
++  --accent-strong: oklch(50% 0.105 78);
++  --accent-bright: oklch(83% 0.14 85);
++}
+ 
+ /*
+  * Surface tones.
+@@ -749,7 +754,10 @@
+ :root[data-theme='dark'][data-dark-tone='plum'],
+ [data-tone='clay'],
+ :root:not([data-theme='dark'])[data-light-tone='clay'],
+-:root[data-theme='dark'][data-dark-tone='clay'] {
++:root[data-theme='dark'][data-dark-tone='clay'],
++[data-tone='navy'],
++:root:not([data-theme='dark'])[data-light-tone='navy'],
++:root[data-theme='dark'][data-dark-tone='navy'] {
+   --tone-source-100: oklch(50% calc(var(--tone-chroma) * 0.2) var(--tone-hue));
+   --tone-source-200: oklch(50% calc(var(--tone-chroma) * 0.3) var(--tone-hue));
+   --tone-source-300: oklch(50% calc(var(--tone-chroma) * 0.45) var(--tone-hue));
+@@ -785,6 +793,13 @@
+   --tone-hue: 45;
+   --tone-chroma: 0.06;
+ }
++/* Navy of the Nachtgold scheme: bluer and less violet than midnight. */
++[data-tone='navy'],
++:root:not([data-theme='dark'])[data-light-tone='navy'],
++:root[data-theme='dark'][data-dark-tone='navy'] {
++  --tone-hue: 250;
++  --tone-chroma: 0.075;
++}
+ 
+ @theme {
+   /* Readable width of the content column of a pane page (`max-w-pane`), and
+diff --git a/apps/frontend/src/app.html b/apps/frontend/src/app.html
+index 6b0198659..179899223 100644
+--- a/apps/frontend/src/app.html
++++ b/apps/frontend/src/app.html
+@@ -47,7 +47,8 @@
+           'slate',
+           'midnight',
+           'mauve',
+-          'plum'
++          'plum',
++          'navy'
+         ];
+ 
+         // CSS selects the tone that matches the active theme.
+@@ -268,7 +269,8 @@
+             'orange',
+             'pink',
+             'violet',
+-            'grey'
++            'grey',
++            'gold'
+           ].includes(accent)
+             ? accent
+             : 'cyan';
+diff --git a/apps/frontend/src/appHtml.spec.ts b/apps/frontend/src/appHtml.spec.ts
+index 06c2e383f..58ab90828 100644
+--- a/apps/frontend/src/appHtml.spec.ts
++++ b/apps/frontend/src/appHtml.spec.ts
+@@ -362,7 +362,7 @@ describe('app.html theme bootstrap', () => {
+     expect(root.style.getPropertyValue('--depth-level')).toBe('50');
+   });
+ 
+-  it.each(['blue', 'cyan', 'teal', 'green', 'amber', 'orange', 'pink', 'violet', 'grey'])(
++  it.each(['blue', 'cyan', 'teal', 'green', 'amber', 'orange', 'pink', 'violet', 'grey', 'gold'])(
+     'restores the %s accent before the app starts',
+     (accentColor) => {
+       const { root } = runThemeScript({ preferences: { accentColor }, systemDark: true });
+@@ -383,7 +383,8 @@ describe('app.html theme bootstrap', () => {
+     'slate',
+     'midnight',
+     'mauve',
+-    'plum'
++    'plum',
++    'navy'
+   ])('restores the %s tone for each theme before the app starts', (tone) => {
+     const { root } = runThemeScript({
+       preferences: { lightSurfaceTone: tone, darkSurfaceTone: 'plum' },
+diff --git a/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte b/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
+index eded5897c..9a76041e5 100644
+--- a/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
++++ b/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
+@@ -18,7 +18,7 @@ The owner applies and saves changes. Samples retain their own palette colours.
+ </script>
+ 
+ <div class="@container">
+-  <fieldset class="grid grid-cols-3 gap-3 @min-[44rem]:grid-cols-9">
++  <fieldset class="grid grid-cols-3 gap-3 @min-[28rem]:grid-cols-5 @min-[44rem]:grid-cols-10">
+     <legend class="sr-only">{m('settings.preferences.accent.title')}</legend>
+     {#each accentColors as color (color)}
+       <label
+diff --git a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte b/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
+index 1a83e7842..242c82ec4 100644
+--- a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
++++ b/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
+@@ -121,6 +121,20 @@
+         icon="iconify icon-[uil--palette]"
+       >
+         <div class="flex flex-col gap-6">
++          <FormSection title={m('settings.preferences.scheme.title')}>
++            <div
++              class="flex max-w-md flex-col gap-2"
++              role="radiogroup"
++              aria-label={m('settings.preferences.scheme.title')}
++            >
++              <ChoiceRow
++                label={m('settings.preferences.scheme.nachtgold.label')}
++                description={m('settings.preferences.scheme.nachtgold.description')}
++                selected={userPreferences.isColorScheme('nachtgold')}
++                onclick={() => userPreferences.applyColorScheme('nachtgold')}
++              />
++            </div>
++          </FormSection>
+           <FormSection title={m('settings.preferences.accent.title')}>
+             <AccentColorPicker
+               value={userPreferences.accentColor}
+diff --git a/apps/frontend/src/lib/state/userPreferences.svelte.spec.ts b/apps/frontend/src/lib/state/userPreferences.svelte.spec.ts
+index d381b8018..b0364e3da 100644
+--- a/apps/frontend/src/lib/state/userPreferences.svelte.spec.ts
++++ b/apps/frontend/src/lib/state/userPreferences.svelte.spec.ts
+@@ -316,6 +316,25 @@ describe('UserPreferencesState', () => {
+     });
+   });
+ 
++  it('applies, persists, and recognises the Nachtgold colour scheme', () => {
++    const state = new UserPreferencesState();
++    expect(state.isColorScheme('nachtgold')).toBe(false);
++
++    state.applyColorScheme('nachtgold');
++    const root = document.documentElement;
++    expect(root.dataset.theme).toBe('dark');
++    expect(root.dataset.accent).toBe('gold');
++    expect(root.dataset.lightTone).toBe('navy');
++    expect(root.dataset.darkTone).toBe('navy');
++    expect(state.isColorScheme('nachtgold')).toBe(true);
++
++    const restored = new UserPreferencesState();
++    expect(restored.isColorScheme('nachtgold')).toBe(true);
++
++    restored.accentColor = 'cyan';
++    expect(restored.isColorScheme('nachtgold')).toBe(false);
++  });
++
+   it('falls back to the default tones for invalid saved or assigned tones', () => {
+     localStorage.setItem(
+       STORAGE_KEY,
+diff --git a/apps/frontend/src/lib/state/userPreferences.svelte.ts b/apps/frontend/src/lib/state/userPreferences.svelte.ts
+index 0554aa254..89bb99510 100644
+--- a/apps/frontend/src/lib/state/userPreferences.svelte.ts
++++ b/apps/frontend/src/lib/state/userPreferences.svelte.ts
+@@ -25,7 +25,8 @@ export const accentColors = [
+   'orange',
+   'pink',
+   'violet',
+-  'grey'
++  'grey',
++  'gold'
+ ] as const;
+ 
+ export type AccentColor = (typeof accentColors)[number];
+@@ -60,7 +61,8 @@ export const surfaceTones = [
+   'slate',
+   'midnight',
+   'mauve',
+-  'plum'
++  'plum',
++  'navy'
+ ] as const;
+ 
+ export type SurfaceTone = (typeof surfaceTones)[number];
+@@ -472,6 +474,25 @@ export function getLegacyNotificationSoundPreferences(): LegacyNotificationSound
+   };
+ }
+ 
++/**
++ * Named colour schemes: a theme, an accent, and a tone for each theme, set
++ * together from App Preferences. Choosing a scheme only writes these existing
++ * preferences, so first paint needs no extra code.
++ */
++export const colorSchemes = {
++  nachtgold: {
++    displayTheme: 'dark',
++    accentColor: 'gold',
++    lightSurfaceTone: 'navy',
++    darkSurfaceTone: 'navy'
++  }
++} as const satisfies Record<
++  string,
++  Pick<AppPreferences, 'displayTheme' | 'accentColor' | 'lightSurfaceTone' | 'darkSurfaceTone'>
++>;
++
++export type ColorSchemeName = keyof typeof colorSchemes;
++
+ export class UserPreferencesState {
+   #preferences = $state<AppPreferences>(loadAppPreferences());
+   readonly #prefersDark = new MediaQuery('(prefers-color-scheme: dark)', false);
+@@ -539,6 +560,33 @@ export class UserPreferencesState {
+     this.#applySurfaceTones();
+   }
+ 
++  /**
++   * True while the preferences match the colour scheme. Depth and contrast
++   * stay free, so they do not count.
++   */
++  isColorScheme(name: ColorSchemeName): boolean {
++    const scheme = colorSchemes[name];
++    return (
++      this.#preferences.displayTheme === scheme.displayTheme &&
++      this.#preferences.accentColor === scheme.accentColor &&
++      this.#preferences.lightSurfaceTone === scheme.lightSurfaceTone &&
++      this.#preferences.darkSurfaceTone === scheme.darkSurfaceTone
++    );
++  }
++
++  /** Set theme, accent, and both tones of a colour scheme in one step. */
++  applyColorScheme(name: ColorSchemeName): void {
++    const scheme = colorSchemes[name];
++    this.#preferences.accentColor = scheme.accentColor;
++    this.#preferences.lightSurfaceTone = scheme.lightSurfaceTone;
++    this.#preferences.darkSurfaceTone = scheme.darkSurfaceTone;
++    this.#preferences.displayTheme = scheme.displayTheme;
++    this.#persist();
++    applyAccentColor(scheme.accentColor);
++    this.#applySurfaceTones();
++    applyDisplayTheme(scheme.displayTheme);
++  }
++
+   /** Bevel strength shared by all servers in this browser. */
+   get surfaceDepth(): number {
+     return this.#preferences.surfaceDepth;
+diff --git a/apps/frontend/src/routes/chat/preferences/appearance.page.svelte.spec.ts b/apps/frontend/src/routes/chat/preferences/appearance.page.svelte.spec.ts
+index 45711091f..c8cd569a0 100644
+--- a/apps/frontend/src/routes/chat/preferences/appearance.page.svelte.spec.ts
++++ b/apps/frontend/src/routes/chat/preferences/appearance.page.svelte.spec.ts
+@@ -161,7 +161,7 @@ describe('App Preferences appearance page', () => {
+     const screen = render(AppearancePage);
+     await settle();
+     const accents = screen.getByRole('group', { name: 'Accent colour' });
+-    expect(accents.element().querySelectorAll('input[type="radio"]')).toHaveLength(9);
++    expect(accents.element().querySelectorAll('input[type="radio"]')).toHaveLength(10);
+     // The visible swatch labels the hidden native radio and forwards focus to it.
+     await userEvent.click(
+       accents.getByRole('radio', { name: 'Violet', exact: true }).element().nextElementSibling!
+-- 
+2.56.0
+
