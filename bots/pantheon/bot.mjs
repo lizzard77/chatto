@@ -1,5 +1,5 @@
 /**
- * Pantheon – Würfel-Bot für Chatto (Daggerheart und Savage Worlds)
+ * Pantheon – Würfel-Bot für Chatto (Daggerheart, Savage Worlds, freies Würfeln)
  * Hört per Realtime-WebSocket auf alle Nachrichten in Räumen, in denen der Bot
  * Mitglied ist, und antwortet über die ConnectRPC-API (JSON).
  */
@@ -109,8 +109,8 @@ async function handleCommand(message) {
 
         case 'system': {
             const wanted = args[0]?.toLowerCase();
-            if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\` oder \`!system swade\`.`);
-            if (!SYSTEMS[wanted]) return send(`❌ Unbekanntes System \`${args[0]}\` — \`dh\` (Daggerheart) oder \`swade\` (Savage Worlds)`);
+            if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\`, \`!system swade\` oder \`!system raw\`.`);
+            if (!SYSTEMS[wanted]) return send(`❌ Unbekanntes System \`${args[0]}\` — \`dh\` (Daggerheart), \`swade\` (Savage Worlds) oder \`raw\` (freies Würfeln)`);
             await setRoomSystem(roomId, wanted);
             return send(`🎲 System in diesem Raum: **${SYSTEMS[wanted]}**\n${modeText(wanted, gm)}`);
         }

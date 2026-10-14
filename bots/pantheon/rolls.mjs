@@ -1,5 +1,5 @@
 /**
- * Würfelregeln für Daggerheart und Savage Worlds (SWADE).
+ * Würfelregeln für Daggerheart, Savage Worlds (SWADE) und freies Würfeln (raw).
  *
  * Jede Funktion liefert { text, dice, swade }: `text` ist Markdown für den Chat,
  * `dice` die einzelnen Würfel für den 3D-Marker (Format: README des Forks),
@@ -173,11 +173,14 @@ function notationDice(roll) {
     }
 }
 
+// Deutsche Schreibweise: `3w6+4` → `3d6+4`, `w%` → `d%`
+const germanDice = (input) => input.replace(/(\d*)w(?=\d|%)/gi, '$1d');
+
 function notation(input, macros) {
     const macro = macros[input.toLowerCase()];
     let roll;
     try {
-        roll = new DiceRoll(macro || input);
+        roll = new DiceRoll(macro || germanDice(input));
     } catch {
         return { text: `❌ Ungültige Würfelnotation: \`${input}\`` };
     }
@@ -191,9 +194,15 @@ function notation(input, macros) {
 
 /**
  * @param {string[]} args  Argumente nach `!roll`
- * @param {{ system: 'dh'|'swade', gm: boolean, macros: object }} ctx
+ * @param {{ system: 'dh'|'swade'|'raw', gm: boolean, macros: object }} ctx
  */
 export function roll(args, { system, gm, macros }) {
+    if (system === 'raw') {
+        const input = args.join('');
+        if (!input) return { text: '🎲 Freies Würfeln: `!roll 3w6+4`, `!roll 2d20kh1`' };
+        return notation(input, macros);
+    }
+
     if (system === 'swade') {
         let prefix = args[0]?.toLowerCase();
         if (prefix === 'dmg' || prefix === 'wild') args = args.slice(1);
@@ -217,10 +226,12 @@ export function roll(args, { system, gm, macros }) {
 
 export const SYSTEMS = {
     dh: 'Daggerheart',
-    swade: 'Savage Worlds'
+    swade: 'Savage Worlds',
+    raw: 'Freies Würfeln'
 };
 
 export function modeText(system, gm) {
+    if (system === 'raw') return '🎲 `!roll 3w6+4` würfelt direkt, ohne Spielregeln';
     if (system === 'swade') {
         return gm
             ? '👹 GM: `!roll d8+1` ohne Wild Die (Extra), `!roll wild d8+1` mit Wild Die (Wild Card)'
@@ -244,23 +255,27 @@ const HELP = {
         '`!roll d4-2` → ungeübt',
         '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
         'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards)'
+    ],
+    raw: [
+        '🎲 **Freies Würfeln** (`!system raw`)',
+        '`!roll 3w6+4` / `!roll 3d6+4` → würfelt direkt, ohne Spielregeln; GM-Modus egal',
+        '`!roll 4d6kh3`, `!roll 2w20kl1`, `!roll d%` → volle Würfelnotation, auch Makros'
     ]
 };
 
 export function helpText(system) {
-    const other = system === 'swade' ? 'dh' : 'swade';
+    const others = Object.keys(SYSTEMS).filter(s => s !== system);
     return [
         `🎲 **Pantheon** — System in diesem Raum: **${SYSTEMS[system]}**`,
         '',
         ...HELP[system],
-        '',
-        ...HELP[other],
+        ...others.flatMap(s => ['', ...HELP[s]]),
         '',
         '**Modus und System**',
-        '`!system dh` / `!system swade` → System für diesen Raum umschalten (`!system` zeigt es an)',
+        '`!system dh` / `!system swade` / `!system raw` → System für diesen Raum umschalten (`!system` zeigt es an)',
         '`!gm` (oder `!dm`) → GM-Modus, `!player` → zurück, `!mode` → aktueller Modus',
         '`!help` → diese Hilfe',
         '',
-        'In beiden Systemen: `!roll 2d6+3`, `!roll 4d6kh3` → freie Würfelnotation, auch Makros wie `!roll fireball`'
+        'In allen Systemen: `!roll 2d6+3` (oder `2w6+3`), `!roll 4d6kh3` → freie Würfelnotation, auch Makros wie `!roll fireball`'
     ].join('\n');
 }

@@ -1,4 +1,4 @@
-# 🎲 Pantheon — Würfel-Bot für Chatto (Daggerheart und Savage Worlds)
+# 🎲 Pantheon — Würfel-Bot für Chatto (Daggerheart, Savage Worlds, freies Würfeln)
 
 - `bot.mjs` – Anbindung an Chatto und Commands.
   - **Eingang:** Realtime-WebSocket (`/api/realtime`, Protokoll 4, `LIVE_ONLY`). Der Bot sieht alle
@@ -15,10 +15,10 @@
 
 | Command | |
 |---|---|
-| `!system dh` / `!system swade` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
+| `!system dh` / `swade` / `raw` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
 | `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
 | `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
-| `!help` / `!hilfe` | Hilfe zu beiden Systemen, das des Raums zuerst |
+| `!help` / `!hilfe` | Hilfe zu allen Systemen, das des Raums zuerst |
 
 **Daggerheart:** `!roll` = Duality Dice (2d12 Hope + Fear), `+N`/`-N`, `adv`/`dis` (±d6).
 Im GM-Modus 1d20 (GM's Die), kritisch auf natürliche 20.
@@ -28,8 +28,11 @@ zählt; Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden = kritischer Feh
 `!roll dmg d8+2d6+1` = Schaden (alle Würfel explodieren und werden addiert, kein Wild Die).
 Im GM-Modus ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards).
 
-In beiden Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
-`DEFAULT_MACROS`.
+**Freies Würfeln (`raw`):** `!roll 3w6+4` würfelt direkt nach der Notation, ohne Spielregeln
+und unabhängig vom GM-Modus.
+
+In allen Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
+`DEFAULT_MACROS`; `w` statt `d` (`3w6`) wird als deutsche Schreibweise akzeptiert.
 
 **3D-Würfel:** Jede Antwort bekommt einen Marker-Link `[🎲](#chatto-dice:…)` (Format: README im
 Repo-Root). Der gepatchte Chatto-Client rollt die Würfel in 3D, bei Savage Worlds mit Wild Die und
