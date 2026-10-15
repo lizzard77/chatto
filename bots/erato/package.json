@@ -6,7 +6,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node --env-file=.env erato.mjs"
+    "start": "node erato.mjs"
   },
   "engines": {
     "node": ">=22"

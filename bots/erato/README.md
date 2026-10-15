@@ -10,7 +10,7 @@ weil die Musik vom eigenen Rechner kommt.
   man über den Call zu; der Chatto-Tab darf deshalb **nicht** auf „Erato“ ausgeben, sonst geht der
   Call-Ton zurück in den Call. `ERATO_MONITOR=1` legt zusätzlich einen lokalen Mithör-Loopback an.
   Beim Beenden wird das Gerät wieder entfernt.
-- Mit Datei (`node --env-file=.env erato.mjs <room-id> musik.mp3`) wird diese in Schleife gestreamt.
+- Mit Datei (`node erato.mjs <room-id> musik.mp3`) wird diese in Schleife gestreamt.
 - Gesendet wird als Mikrofon-Track, 48 kHz Stereo, Opus 128 kbit/s, ohne DTX.
 
 ## Einrichtung
@@ -19,7 +19,8 @@ weil die Musik vom eigenen Rechner kommt.
 2. Auf der Detailseite des Bots für die gewünschten Räume erlauben: `room.join`, `call.join`,
    `call.start`, `call.voice`. Danach in der **Joined**-Zeile die Räume anhaken.
 3. `cp .env.example .env`, `CHATTO_API_KEY` eintragen.
-4. `npm i`, dann `npm start` (benötigt `ffmpeg` und `pactl`). Beenden mit Ctrl+C.
+4. `npm i`, dann `npm start` oder `node erato.mjs` (benötigt `ffmpeg` und `pactl`). Die `.env` neben
+   `erato.mjs` wird immer geladen, auch aus einem anderen Verzeichnis; Shell-Variablen haben Vorrang. Beenden mit Ctrl+C.
 
 ## Soundpads vom RØDECaster
 

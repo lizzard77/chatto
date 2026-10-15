@@ -8,6 +8,7 @@
  */
 
 import { spawn, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
     AudioFrame,
     AudioSource,
@@ -18,6 +19,11 @@ import {
     TrackSource,
     dispose
 } from '@livekit/rtc-node';
+
+// .env neben dem Skript laden, unabhängig vom Arbeitsverzeichnis und von --env-file.
+// Variablen aus der Shell haben Vorrang.
+const envFile = new URL('.env', import.meta.url);
+if (existsSync(envFile)) process.loadEnvFile(envFile);
 
 // Konfiguration
 const chattoUrl = (process.env.CHATTO_URL || 'https://chat.he1.lizzard77.dev').replace(/\/$/, '');
