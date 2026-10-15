@@ -207,8 +207,12 @@ export function roll(args, { system, gm, macros }) {
         let prefix = args[0]?.toLowerCase();
         if (prefix === 'dmg' || prefix === 'wild') args = args.slice(1);
         else prefix = null;
-        const input = args.join('');
+        let input = args.join('');
         if (!input) return { text: '⚔️ Savage Worlds: `!roll d8+1`, Schaden mit `!roll dmg d8+2d6`' };
+        // `x` hinter einem Würfel (`3d6x`, `d8x+1`): einfacher Wurf, explodiert nicht, kein Wild Die
+        if (prefix !== 'dmg' && /[dw]\d+x/i.test(input)) {
+            return notation(input.toLowerCase().replace(/([dw]\d+)x/g, '$1'), macros);
+        }
         const parsed = parseSwadeTerms(input);
         if (prefix === 'dmg') {
             return parsed ? swadeDamage(parsed) : { text: `❌ Ungültiger Schadenswurf: \`${input}\`` };
@@ -254,6 +258,7 @@ const HELP = {
         'Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden Würfeln = kritischer Fehlschlag',
         '`!roll d4-2` → ungeübt',
         '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
+        '`!roll 3d6x`, `!roll d8x+1` → einfacher Wurf: explodiert nicht, kein Wild Die, keine Steigerungen',
         'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards)'
     ],
     raw: [
