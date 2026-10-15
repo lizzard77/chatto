@@ -76,14 +76,14 @@ function ace(sides) {
 
 const chain = ({ rolls }) => rolls.join('+') + (rolls.length > 1 ? ' 💥' : '');
 
-// `d8+2d6+3-1` → Würfelterme und Modifikator; null bei anderer Syntax.
+// `d8+2d6+3-1` (auch `w8+2w6`) → Würfelterme und Modifikator; null bei anderer Syntax.
 function parseSwadeTerms(input) {
     const tokens = input.toLowerCase().match(/[+-]?[^+-]+/g);
     if (!tokens) return null;
     const terms = [];
     let modifier = 0;
     for (const token of tokens) {
-        const m = /^([+-]?)(\d*)d(\d+)$/.exec(token);
+        const m = /^([+-]?)(\d*)[dw](\d+)$/.exec(token);
         if (m) {
             if (m[1] === '-') return null;
             const count = m[2] ? parseInt(m[2], 10) : 1;
