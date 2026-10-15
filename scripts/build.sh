@@ -6,7 +6,7 @@ need_upstream
 cd "$UPSTREAM"
 say "pnpm install"
 pnpm install --frozen-lockfile >/dev/null
-say "Frontend bauen (inkl. Bundle-Budget)"
+say "Frontend bauen"
 CHATTO_BUILD_VERSION="${VERSION}-dev" pnpm run build:frontend
 bash tools/prepare-embedded-frontend.sh apps/frontend/build cli/internal/http_server/.client
 if [ "${1:-}" = "--check" ]; then

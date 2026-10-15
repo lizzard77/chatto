@@ -26,7 +26,7 @@ Rebasing onto a new upstream release: `scripts/upstream.sh <new>` → resolve co
 ## Build and run
 
 ```sh
-scripts/build.sh            # pnpm install, build frontend (incl. bundle budget), embed it, go build → upstream/cli/bin/chatto
+scripts/build.sh            # pnpm install, build frontend, embed it, go build → upstream/cli/bin/chatto
 scripts/build.sh --check    # additionally svelte-check (only meaningful after the frontend build)
 scripts/dev.sh              # build + run on http://localhost:${CHATTO_DEV_PORT:-4400}, data in .dev/
 scripts/dev.sh --no-build   # run only
@@ -35,7 +35,7 @@ scripts/dev.sh --reset      # wipe .dev/ → fresh server with test users alice/
 
 `scripts/lib.sh` wraps `pnpm`: it runs the version pinned in `upstream/mise.toml` via `npx`, under Node 24 through `fnm` if installed. Go version also comes from `upstream/mise.toml`.
 
-Known expected failures with the patches applied: upstream's `catalogs.spec.ts` (new i18n strings exist only in en-GB and de-DE). Patch 0002 raises the `overview` route budget in `apps/frontend/scripts/check-bundle-size.mjs`; new frontend code close to the budget will fail `pnpm run build`.
+Known expected failures with the patches applied: upstream's `catalogs.spec.ts` (new i18n strings exist only in en-GB and de-DE). Upstream removed its bundle budget check in 0.5.0-beta.16. Also failing: two Slow-Mode/Markdown-editor tests in `MessageComposer.svelte.spec.ts` (fail upstream too) and `appearance.page.svelte.spec.ts` (panel count, from 0002).
 
 ## Patches (summary — details in README.md)
 

@@ -89,9 +89,7 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   live in the open room or thread, the dice tumble across the window; the 🎲 in the message replays
   the roll. Per device under **Settings → Appearance → 3D dice**: *All rolls*, *Only my rolls* or
   *Off* (off by default with "reduce motion"). Own dependency-free WebGL renderer, loaded on the
-  first roll only (no lockfile change). Code in `apps/frontend/src/lib/dice/`. Raises the bundle
-  budget of the `overview` route in `apps/frontend/scripts/check-bundle-size.mjs` by 2 KiB, because
-  upstream is already close to the limit and `pnpm run build` would fail otherwise. Upstream's
+  first roll only (no lockfile change). Code in `apps/frontend/src/lib/dice/`. Upstream's
   `catalogs.spec.ts` fails because the new strings exist only in en-GB and de-DE (as with 0001);
   the image build does not run it.
 
@@ -125,8 +123,7 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   the label is generated (`#…` or the bare URL); custom labels stay. Links to rooms the viewer
   cannot see (private without access, deleted, archived) become a non-clickable **"unknown room"**
   chip, so the room name in the label does not leak. DMs, threads, messages and other servers stay
-  plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only. The `room` route is
-  0.6 KiB below its bundle budget with all patches.
+  plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 
 ### Dice marker (bot ↔ frontend interface)
 

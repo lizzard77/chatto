@@ -17,7 +17,6 @@ per device in Settings → Appearance (off by default with reduced motion).
 ---
  apps/frontend/messages/de-DE/dice.json        |  37 +
  apps/frontend/messages/en-GB/dice.json        |  37 +
- apps/frontend/scripts/check-bundle-size.mjs   |   9 +-
  .../settings/AppAppearanceSettings.svelte     |  24 +
  apps/frontend/src/lib/dice/dice.svelte.ts     | 121 +++
  apps/frontend/src/lib/dice/diceGeometry.ts    | 272 +++++++
@@ -27,7 +26,7 @@ per device in Settings → Appearance (off by default with reduced motion).
  apps/frontend/src/lib/markdown.ts             |  31 +
  apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   9 +
  .../[roomId]/ConversationPane.svelte          |   9 +
- 12 files changed, 1344 insertions(+), 3 deletions(-)
+ 11 files changed, 1338 insertions(+)
  create mode 100644 apps/frontend/messages/de-DE/dice.json
  create mode 100644 apps/frontend/messages/en-GB/dice.json
  create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
@@ -121,40 +120,6 @@ index 000000000..820867716
 +    }
 +  }
 +}
-diff --git a/apps/frontend/scripts/check-bundle-size.mjs b/apps/frontend/scripts/check-bundle-size.mjs
-index b9c36391c..b2066c131 100644
---- a/apps/frontend/scripts/check-bundle-size.mjs
-+++ b/apps/frontend/scripts/check-bundle-size.mjs
-@@ -20,7 +20,8 @@ const routes = [
-     // CI measured 337.1 KiB; retain allowance for build variation.
-     // LiveKit diagnostics strings in the bundled en-GB fallback catalog add
-     // about 0.7 KiB.
--    budgetKiB: 338.5,
-+    // lizzard fork: +3.5 KiB for the fork patches.
-+    budgetKiB: 342,
-     components: ['src/routes/+layout.svelte', 'src/routes/login/+page.svelte']
-   },
-   {
-@@ -31,7 +32,8 @@ const routes = [
-     // Footnote layout and local navigation add about 0.6 KiB in CI.
-     // LiveKit diagnostics strings in the bundled en-GB fallback catalog add
-     // about 0.7 KiB.
--    budgetKiB: 382,
-+    // lizzard fork: +4 KiB for the sidebar iframe and 3D dice patches.
-+    budgetKiB: 386,
-     components: [
-       'src/routes/+layout.svelte',
-       'src/routes/chat/+layout.svelte',
-@@ -42,7 +44,8 @@ const routes = [
-   {
-     name: 'room',
-     // CI baseline: 515.8 KiB, with roughly 10% headroom.
--    budgetKiB: 570,
-+    // lizzard fork: +3 KiB for the fork patches.
-+    budgetKiB: 573,
-     components: [
-       'src/routes/+layout.svelte',
-       'src/routes/chat/+layout.svelte',
 diff --git a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte b/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
 index f4a71787f..1a83e7842 100644
 --- a/apps/frontend/src/lib/components/settings/AppAppearanceSettings.svelte
@@ -1431,11 +1396,11 @@ index 2d2ef1fcb..eaad03736 100644
    'error_page',
    'media',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 117969565..ca63b9d2c 100644
+index 583ef5856..7454a926d 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
 @@ -8,6 +8,7 @@ import { configureMarkdownLinks } from './markdownLinks';
- import { classifyMessageBodyChatLink } from '$lib/messageLinks';
+ import { renderedLinkTarget } from '$lib/navigation/renderedLink';
  import { collectMentionHandles, MENTIONS_ENV_KEY, mentionPlugin } from '$lib/markdownMentions';
  import { m } from '$lib/i18n/messages';
 +import { diceSpecFromHref } from '$lib/dice/diceSpec';
@@ -1487,10 +1452,10 @@ index 117969565..ca63b9d2c 100644
    md.renderer.rules.hardbreak = renderChatLineBreak;
    md.renderer.rules.table_open = () => '<div class="table-scroll" tabindex="0"><table>\n';
 diff --git a/apps/frontend/src/lib/ui/MarkdownHtml.svelte b/apps/frontend/src/lib/ui/MarkdownHtml.svelte
-index 6052fb02a..52d63bf7e 100644
+index 066ad7deb..7be9b172a 100644
 --- a/apps/frontend/src/lib/ui/MarkdownHtml.svelte
 +++ b/apps/frontend/src/lib/ui/MarkdownHtml.svelte
-@@ -52,6 +52,15 @@ targets are unique to each component, including when callers reuse rendered HTML
+@@ -53,6 +53,15 @@ targets are unique to each component, including when callers reuse rendered HTML
        return;
      }
  
@@ -1504,8 +1469,8 @@ index 6052fb02a..52d63bf7e 100644
 +    }
 +
      const button = target.closest<HTMLButtonElement>('button[data-markdown-copy]');
-     if (!button) return;
- 
+     if (!button) {
+       const anchor = target.closest('a');
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 index eade13e41..e7facbb2d 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
@@ -1534,5 +1499,5 @@ index eade13e41..e7facbb2d 100644
      const actorId = projectionEvent.event?.actorId;
      if (actorId) typingIndicator.removeTypingUser(actorId);
 -- 
-2.47.3
+2.56.0
 

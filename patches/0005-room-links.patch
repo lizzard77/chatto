@@ -14,16 +14,16 @@ become a non-clickable "unknown room" chip. Frontend only.
  apps/frontend/src/app.css                     |  13 ++
  .../src/lib/components/MessageContent.svelte  |  29 ++-
  .../composer/MessageComposer.svelte           |  15 ++
- .../composer/RoomAutocomplete.svelte          |  61 +++++++
+ .../composer/RoomAutocomplete.svelte          |  61 ++++++
  .../components/composer/TipTapEditor.svelte   |  14 ++
- .../composer/autocomplete.svelte.ts           |  73 +++++++-
+ .../composer/autocomplete.svelte.ts           |  73 ++++++-
  .../lib/components/composer/editorTypes.ts    |   5 +
  .../composer/messageComposerState.svelte.ts   |  10 +-
  .../composer/roomAutocomplete.svelte.spec.ts  |  99 ++++++++++
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
- .../frontend/src/lib/roomLinks.svelte.spec.ts | 130 +++++++++++++
- apps/frontend/src/lib/roomLinks.ts            | 172 ++++++++++++++++++
- 14 files changed, 630 insertions(+), 6 deletions(-)
+ .../frontend/src/lib/roomLinks.svelte.spec.ts | 141 ++++++++++++++
+ apps/frontend/src/lib/roomLinks.ts            | 180 ++++++++++++++++++
+ 14 files changed, 649 insertions(+), 6 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/room_links.json
  create mode 100644 apps/frontend/messages/en-GB/room_links.json
  create mode 100644 apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
@@ -58,10 +58,10 @@ index 000000000..fc911c939
 +  }
 +}
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index 6ae067013..8b216534e 100644
+index 59013454f..e41d204ed 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
-@@ -1781,6 +1781,19 @@
+@@ -1796,6 +1796,19 @@
    @apply bg-attention/20 text-text;
  }
  
@@ -82,12 +82,12 @@ index 6ae067013..8b216534e 100644
    @apply inline-flex cursor-pointer items-baseline gap-1 rounded-sm bg-surface-emphasized px-1 font-medium whitespace-nowrap text-text transition-[background-color,color,scale] hover:bg-surface-selected active:scale-[0.98];
  }
 diff --git a/apps/frontend/src/lib/components/MessageContent.svelte b/apps/frontend/src/lib/components/MessageContent.svelte
-index 474b0a226..b2185c373 100644
+index 6cc038d06..9c96023b8 100644
 --- a/apps/frontend/src/lib/components/MessageContent.svelte
 +++ b/apps/frontend/src/lib/components/MessageContent.svelte
-@@ -9,6 +9,12 @@
+@@ -7,6 +7,12 @@
+   import { renderMarkdown as renderMd } from '$lib/markdown';
    import { MarkdownHtml, ContextMenu } from '$lib/ui';
-   import { classifyMessageBodyChatLink } from '$lib/messageLinks';
    import { resolveRenderedMentions, type RoomMember } from '$lib/mentions';
 +  import {
 +    resolveRenderedRoomLinks,
@@ -98,7 +98,7 @@ index 474b0a226..b2185c373 100644
    import { formatRelativeMessageTimestamp, wrapMessageTimestamps } from '$lib/messageTimestamps';
    import { parseTrustedMarkdownHtml } from '$lib/security/trustedHtml';
    import { getLocale } from '$lib/i18n/runtime';
-@@ -53,6 +59,19 @@
+@@ -51,6 +57,19 @@
      onMentionClick?: (userId: string, anchorRect: DOMRect) => void;
    } = $props();
    let activeTimestamp = $state<ActiveTimestamp | null>(null);
@@ -118,7 +118,7 @@ index 474b0a226..b2185c373 100644
    const liveNow = new SvelteDate();
    const activeTimestampLocale = $derived(timestampLocale ?? getLocale());
    const activeTimestampLocalText = $derived(
-@@ -131,10 +150,14 @@
+@@ -129,10 +148,14 @@
      echoedToChannel: boolean,
      viewerLogin: string | undefined,
      timestampSettings: TimeFormatSettings,
@@ -135,7 +135,7 @@ index 474b0a226..b2185c373 100644
      const withTimestamps = wrapMessageTimestamps(
        wrapped,
        timestampSettings,
-@@ -199,7 +222,7 @@
+@@ -176,7 +199,7 @@
  </script>
  
  <div class="prose max-w-none min-w-0" dir="auto" role="presentation" onclick={handleContentClick}>
@@ -252,10 +252,10 @@ index 000000000..a719ca5b2
 +  {/snippet}
 +</AutocompletePopup>
 diff --git a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-index 910c7f47c..38c170258 100644
+index 764063341..1dd810955 100644
 --- a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
 +++ b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-@@ -377,6 +377,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
+@@ -378,6 +378,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
          tick().then(syncControls);
        },
  
@@ -415,7 +415,7 @@ index 61fc9e983..71034a19d 100644
    insertText: (text: string) => void;
    /** Toggle formatting or insert a footnote at the current selection. */
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 152a67915..2295b751c 100644
+index 6b04d54f4..26bb63fde 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
@@ -446,7 +446,7 @@ index 152a67915..2295b751c 100644
      );
      this.submission = new ComposerSubmissionState({
        getAPI: dependencies.getMessageAPI,
-@@ -369,6 +372,9 @@ export class MessageComposerState {
+@@ -368,6 +371,9 @@ export class MessageComposerState {
      if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
        return true;
      }
@@ -575,10 +575,10 @@ index 854597cd4..796060b24 100644
    'server_settings',
 diff --git a/apps/frontend/src/lib/roomLinks.svelte.spec.ts b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
 new file mode 100644
-index 000000000..4c75d30a2
+index 000000000..fceb017ba
 --- /dev/null
 +++ b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,141 @@
 +import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 +import { RoomKind } from '@chatto/api-types/api/v1/rooms_pb';
 +import type { RoomListItem } from '@chatto/client/server/rooms';
@@ -640,6 +640,9 @@ index 000000000..4c75d30a2
 +  beforeEach(() => {
 +    vi.spyOn(serverRegistry, 'originServer', 'get').mockReturnValue(originServer);
 +    vi.spyOn(serverRegistry, 'isOriginServer').mockImplementation((id) => id === 'origin');
++    vi.spyOn(serverRegistry, 'getServer').mockImplementation((id) =>
++      id === 'origin' ? { ...originServer, url: window.location.origin } : undefined
++    );
 +  });
 +
 +  afterEach(() => {
@@ -679,6 +682,14 @@ index 000000000..4c75d30a2
 +    expect(html).not.toContain('secret');
 +  });
 +
++  it('reads the original URL of a rendered link', () => {
++    const html = resolveRenderedRoomLinks(
++      `<p><a href="/chat/-/${generalId}" data-content-href="${roomURL(generalId)}">#x</a></p>`,
++      directory
++    );
++    expect(html).toContain('>#general</a>');
++  });
++
 +  it('keeps DM links, thread links and other links unchanged', () => {
 +    const inputs = [
 +      anchor(roomURL(dmId), 'dm'),
@@ -711,10 +722,10 @@ index 000000000..4c75d30a2
 +});
 diff --git a/apps/frontend/src/lib/roomLinks.ts b/apps/frontend/src/lib/roomLinks.ts
 new file mode 100644
-index 000000000..70dd824f9
+index 000000000..fc15c4942
 --- /dev/null
 +++ b/apps/frontend/src/lib/roomLinks.ts
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,180 @@
 +/**
 + * Room links in message bodies.
 + *
@@ -726,11 +737,10 @@ index 000000000..70dd824f9
 + * the viewer cannot see the room.
 + */
 +
-+import { resolve } from '$app/paths';
 +import { RoomKind } from '@chatto/api-types/api/v1/rooms_pb';
 +import type { RoomListItem, RoomListView } from '@chatto/client/server/rooms';
-+import { classifyMessageBodyChatLink } from '$lib/messageLinks';
-+import { serverIdToSegment } from '$lib/navigation';
++import { resolveChatRoute } from '$lib/chatLinks';
++import { segmentToServerId } from '$lib/navigation';
 +import { fuzzyMatch } from '$lib/fuzzyMatch';
 +import { parseTrustedMarkdownHtml } from '$lib/security/trustedHtml';
 +import { m } from '$lib/i18n/messages';
@@ -790,13 +800,22 @@ index 000000000..70dd824f9
 +  return buildRoomLinkDirectory(serverId, roomList.rooms);
 +}
 +
-+/** Absolute URL of a room, as inserted by `#` autocomplete. */
-+export function buildRoomLinkURL(serverId: string, roomId: string): string {
-+  const path = resolve('/chat/[serverId]/[roomId]', {
-+    serverId: serverIdToSegment(serverId),
-+    roomId
-+  });
-+  return typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString();
++/** Absolute URL of a room on its server, as inserted by `#` autocomplete. */
++export { buildRoomLinkURL } from '$lib/chatLinks';
++
++const roomIdPattern = /^R[a-zA-Z0-9]{14}$|^[a-f0-9]{14}$/;
++
++/**
++ * Parses a link to a room route (not a thread or message) of a registered
++ * server, as an absolute URL or a local path.
++ */
++function parseRoomLink(href: string): { serverId: string; roomId: string } | null {
++  const path = resolveChatRoute(href);
++  if (!path) return null;
++  const parts = new URL(path, window.location.origin).pathname.split('/').filter(Boolean);
++  if (parts.length !== 3 || !roomIdPattern.test(parts[2])) return null;
++  const serverId = segmentToServerId(parts[1]);
++  return serverId ? { serverId, roomId: parts[2] } : null;
 +}
 +
 +/** Link label for a room, as inserted by `#` autocomplete. */
@@ -833,8 +852,7 @@ index 000000000..70dd824f9
 +  const label = anchor.textContent?.trim() ?? '';
 +  if (label.startsWith('#')) return true;
 +  // A bare (linkified) room URL.
-+  const link = classifyMessageBodyChatLink(label);
-+  return link?.kind === 'room' && link.roomId === roomId;
++  return parseRoomLink(label)?.roomId === roomId;
 +}
 +
 +function unknownRoomChip(doc: Document): HTMLSpanElement {
@@ -867,8 +885,9 @@ index 000000000..70dd824f9
 +
 +  const doc = parseTrustedMarkdownHtml(html);
 +  for (const anchor of doc.body.querySelectorAll('a[href]')) {
-+    const link = classifyMessageBodyChatLink(anchor.getAttribute('href') ?? '');
-+    if (link?.kind !== 'room' || link.serverId !== directory.serverId) continue;
++    const href = anchor.getAttribute('data-content-href') ?? anchor.getAttribute('href') ?? '';
++    const link = parseRoomLink(href);
++    if (link?.serverId !== directory.serverId) continue;
 +    const roomId = link.roomId;
 +    if (directory.directMessageIds.has(roomId)) continue;
 +
