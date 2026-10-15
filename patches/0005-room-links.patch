@@ -1,0 +1,892 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Thu, 15 Oct 2026 14:34:00 +0200
+Subject: [PATCH] feat: link rooms with #name autocomplete and room chips
+
+Typing #name in the composer offers the server's rooms and inserts a
+plain Markdown link [#name](<origin>/chat/<server>/<roomId>), so clients
+without this feature still see a working link. Rendered room links show
+the current room name as a chip; links to rooms the viewer cannot see
+become a non-clickable "unknown room" chip. Frontend only.
+---
+ apps/frontend/messages/de-DE/room_links.json  |   7 +
+ apps/frontend/messages/en-GB/room_links.json  |   7 +
+ apps/frontend/src/app.css                     |  13 ++
+ .../src/lib/components/MessageContent.svelte  |  29 ++-
+ .../composer/MessageComposer.svelte           |  15 ++
+ .../composer/RoomAutocomplete.svelte          |  61 +++++++
+ .../components/composer/TipTapEditor.svelte   |  14 ++
+ .../composer/autocomplete.svelte.ts           |  73 +++++++-
+ .../lib/components/composer/editorTypes.ts    |   5 +
+ .../composer/messageComposerState.svelte.ts   |  10 +-
+ .../composer/roomAutocomplete.svelte.spec.ts  |  99 ++++++++++
+ apps/frontend/src/lib/i18n/catalogSections.js |   1 +
+ .../frontend/src/lib/roomLinks.svelte.spec.ts | 130 +++++++++++++
+ apps/frontend/src/lib/roomLinks.ts            | 172 ++++++++++++++++++
+ 14 files changed, 630 insertions(+), 6 deletions(-)
+ create mode 100644 apps/frontend/messages/de-DE/room_links.json
+ create mode 100644 apps/frontend/messages/en-GB/room_links.json
+ create mode 100644 apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
+ create mode 100644 apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts
+ create mode 100644 apps/frontend/src/lib/roomLinks.svelte.spec.ts
+ create mode 100644 apps/frontend/src/lib/roomLinks.ts
+
+diff --git a/apps/frontend/messages/de-DE/room_links.json b/apps/frontend/messages/de-DE/room_links.json
+new file mode 100644
+index 000000000..47fa24cb7
+--- /dev/null
++++ b/apps/frontend/messages/de-DE/room_links.json
+@@ -0,0 +1,7 @@
++{
++  "room_links": {
++    "unknown": "unbekannter Raum",
++    "unknown_title": "Diesen Raum gibt es nicht, oder du hast keinen Zugriff darauf",
++    "autocomplete_not_joined": "Nicht beigetreten"
++  }
++}
+diff --git a/apps/frontend/messages/en-GB/room_links.json b/apps/frontend/messages/en-GB/room_links.json
+new file mode 100644
+index 000000000..fc911c939
+--- /dev/null
++++ b/apps/frontend/messages/en-GB/room_links.json
+@@ -0,0 +1,7 @@
++{
++  "room_links": {
++    "unknown": "unknown room",
++    "unknown_title": "This room does not exist or you do not have access to it",
++    "autocomplete_not_joined": "Not joined"
++  }
++}
+diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
+index 6ae067013..8b216534e 100644
+--- a/apps/frontend/src/app.css
++++ b/apps/frontend/src/app.css
+@@ -1781,6 +1781,19 @@
+   @apply bg-attention/20 text-text;
+ }
+ 
++/* Room links in messages; see `$lib/roomLinks` */
++.prose a.room-link {
++  @apply rounded-sm bg-action/15 px-0.5 font-semibold text-action no-underline;
++}
++
++.room-link-unknown {
++  @apply inline-flex cursor-default items-baseline gap-0.5 rounded-sm bg-surface-emphasized px-1 font-medium text-muted;
++}
++
++.room-link-icon {
++  @apply self-center text-[0.85em];
++}
++
+ .message-timestamp {
+   @apply inline-flex cursor-pointer items-baseline gap-1 rounded-sm bg-surface-emphasized px-1 font-medium whitespace-nowrap text-text transition-[background-color,color,scale] hover:bg-surface-selected active:scale-[0.98];
+ }
+diff --git a/apps/frontend/src/lib/components/MessageContent.svelte b/apps/frontend/src/lib/components/MessageContent.svelte
+index 474b0a226..b2185c373 100644
+--- a/apps/frontend/src/lib/components/MessageContent.svelte
++++ b/apps/frontend/src/lib/components/MessageContent.svelte
+@@ -9,6 +9,12 @@
+   import { MarkdownHtml, ContextMenu } from '$lib/ui';
+   import { classifyMessageBodyChatLink } from '$lib/messageLinks';
+   import { resolveRenderedMentions, type RoomMember } from '$lib/mentions';
++  import {
++    resolveRenderedRoomLinks,
++    roomLinkDirectoryFor,
++    type RoomLinkDirectory
++  } from '$lib/roomLinks';
++  import { useServerScope, type ServerScope } from '$lib/state/server/scope.svelte';
+   import { formatRelativeMessageTimestamp, wrapMessageTimestamps } from '$lib/messageTimestamps';
+   import { parseTrustedMarkdownHtml } from '$lib/security/trustedHtml';
+   import { getLocale } from '$lib/i18n/runtime';
+@@ -53,6 +59,19 @@
+     onMentionClick?: (userId: string, anchorRect: DOMRect) => void;
+   } = $props();
+   let activeTimestamp = $state<ActiveTimestamp | null>(null);
++
++  // Room links name rooms of the current server. Surfaces outside a server
++  // route, such as stories, have no scope and keep room links unchanged.
++  let serverScope: ServerScope | null = null;
++  try {
++    serverScope = useServerScope();
++  } catch {
++    serverScope = null;
++  }
++  const roomLinkDirectory = $derived.by((): RoomLinkDirectory | null => {
++    if (!serverScope || !body.includes('/chat/')) return null;
++    return roomLinkDirectoryFor(serverScope.serverId, serverScope.store.roomList);
++  });
+   const liveNow = new SvelteDate();
+   const activeTimestampLocale = $derived(timestampLocale ?? getLocale());
+   const activeTimestampLocalText = $derived(
+@@ -131,10 +150,14 @@
+     echoedToChannel: boolean,
+     viewerLogin: string | undefined,
+     timestampSettings: TimeFormatSettings,
+-    timestampLocale: string | undefined
++    timestampLocale: string | undefined,
++    roomLinkDirectory: RoomLinkDirectory | null
+   ): Promise<string> {
+     const html = await renderMd(body, { mentions: true });
+-    const wrapped = resolveRenderedMentions(html, members, viewerLogin, roleHandles);
++    const wrapped = resolveRenderedRoomLinks(
++      resolveRenderedMentions(html, members, viewerLogin, roleHandles),
++      roomLinkDirectory
++    );
+     const withTimestamps = wrapMessageTimestamps(
+       wrapped,
+       timestampSettings,
+@@ -199,7 +222,7 @@
+ </script>
+ 
+ <div class="prose max-w-none min-w-0" dir="auto" role="presentation" onclick={handleContentClick}>
+-  {#await render(body, members, roleHandles, edited, echoedToChannel, viewerLogin, timestampSettings, timestampLocale)}
++  {#await render(body, members, roleHandles, edited, echoedToChannel, viewerLogin, timestampSettings, timestampLocale, roomLinkDirectory)}
+     {body}
+   {:then html}
+     <MarkdownHtml {html} />
+diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
+index e8b92ffa5..c35107163 100644
+--- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
++++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
+@@ -25,6 +25,8 @@
+   import type { Component } from 'svelte';
+   import EmojiAutocomplete from './EmojiAutocomplete.svelte';
+   import MentionAutocomplete from './MentionAutocomplete.svelte';
++  import RoomAutocomplete from './RoomAutocomplete.svelte';
++  import { roomLinkDirectoryFor } from '$lib/roomLinks';
+   import ComposerLinkPreview from './ComposerLinkPreview.svelte';
+   import ComposerAttachmentPreviews from './ComposerAttachmentPreviews.svelte';
+   import ComposerFormattingToolbar from './ComposerFormattingToolbar.svelte';
+@@ -166,6 +168,10 @@
+     context: composerContext,
+     getMembers: () => membersStore().members,
+     getMentionPriorityUserIds: () => mentionPriorityUserIds,
++    getRoomLinkSource: () => {
++      const directory = roomLinkDirectoryFor(serverScope.serverId, stores.roomList);
++      return directory && { serverId: directory.serverId, rooms: [...directory.rooms.values()] };
++    },
+     get membersStore() {
+       return membersStore();
+     },
+@@ -325,6 +331,15 @@
+             onClose={() => composer.autocomplete.closeMention()}
+           />
+         {/if}
++        {#if composer.autocomplete.room}
++          <RoomAutocomplete
++            bind:this={composer.autocomplete.roomRef}
++            query={composer.autocomplete.room.query}
++            rooms={composer.autocomplete.rooms}
++            onSelect={(room) => composer.autocomplete.selectRoom(room)}
++            onClose={() => composer.autocomplete.closeRoom()}
++          />
++        {/if}
+ 
+         <CompactActionButton
+           wrapperClass={[
+diff --git a/apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte b/apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
+new file mode 100644
+index 000000000..a719ca5b2
+--- /dev/null
++++ b/apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
+@@ -0,0 +1,61 @@
++<!--
++@component
++
++`#room` autocomplete popup.
++Shows matching rooms when typing #name in chat input. Selecting a room
++inserts a room link; see `$lib/roomLinks`.
++
++**Props:**
++- `query` - Current search query (without the leading #)
++- `rooms` - Rooms to search through
++- `onSelect` - Callback when a room is selected
++- `onClose` - Callback to close the popup
++-->
++<script lang="ts">
++  import AutocompletePopup from './AutocompletePopup.svelte';
++  import { rankRoomLinkCandidates, type RoomLinkRoom } from '$lib/roomLinks';
++  import { m } from '$lib/i18n/messages';
++
++  type Props = {
++    query: string;
++    rooms: RoomLinkRoom[];
++    onSelect: (room: RoomLinkRoom) => void;
++    onClose: () => void;
++  };
++
++  let { query, rooms, onSelect, onClose }: Props = $props();
++
++  let results = $derived(rankRoomLinkCandidates(query, rooms));
++
++  let popupRef = $state<{ handleKeyDown: (e: KeyboardEvent) => boolean } | null>(null);
++
++  export function handleKeyDown(event: KeyboardEvent): boolean {
++    return popupRef?.handleKeyDown(event) ?? false;
++  }
++</script>
++
++<AutocompletePopup
++  bind:this={popupRef}
++  items={results}
++  getKey={(room) => room.id}
++  selectKeys={['Enter', 'Tab']}
++  onSelect={(room) => onSelect(room)}
++  {onClose}
++  testid="room-autocomplete"
++  class="md:w-72"
++>
++  {#snippet item({ item: room })}
++    <div
++      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface-emphasized text-sm font-semibold text-muted"
++      aria-hidden="true"
++    >
++      #
++    </div>
++    <bdi class="min-w-0 truncate text-sm text-text">{room.name}</bdi>
++    {#if !room.isMember}
++      <span class="min-w-0 truncate text-sm text-muted"
++        >{m('room_links.autocomplete_not_joined')}</span
++      >
++    {/if}
++  {/snippet}
++</AutocompletePopup>
+diff --git a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
+index 910c7f47c..38c170258 100644
+--- a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
++++ b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
+@@ -377,6 +377,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
+         tick().then(syncControls);
+       },
+ 
++      replaceTextBeforeCursorWithLink: (charCount: number, label: string, href: string) => {
++        if (e.isDestroyed) return;
++        const { from } = e.state.selection;
++        e.chain()
++          .focus()
++          .deleteRange({ from: from - charCount, to: from })
++          .insertContent([
++            { type: 'text', text: label, marks: [{ type: 'link', attrs: { href } }] },
++            { type: 'text', text: ' ' }
++          ])
++          .run();
++        tick().then(syncControls);
++      },
++
+       insertText: (text: string) => {
+         if (e.isDestroyed || !text) return;
+         e.chain().focus().insertContent(text).run();
+diff --git a/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts b/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
+index 8eda4f50a..56638c52d 100644
+--- a/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
++++ b/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
+@@ -2,6 +2,7 @@ import type { RoomMember } from '$lib/state/room';
+ import { searchEmojis } from '$lib/emoji';
+ import type { ComposerEditorApi } from './editorTypes';
+ import { rankMentionCandidates } from './mentionRanking';
++import { buildRoomLinkURL, roomLinkLabel, type RoomLinkRoom } from '$lib/roomLinks';
+ 
+ export type MentionRole = {
+   name: string;
+@@ -27,24 +28,40 @@ export type MentionAutocompleteState = {
+   triggerStart: number;
+ };
+ 
++export type RoomAutocompleteState = {
++  query: string;
++  triggerStart: number;
++};
++
++/** The server and rooms that `#` autocomplete links to. */
++export type RoomLinkSource = {
++  serverId: string;
++  rooms: RoomLinkRoom[];
++};
++
+ export class AutocompleteState {
+   tabCompletion = $state<TabCompletionState | null>(null);
+   emoji = $state<EmojiAutocompleteState | null>(null);
+   emojiRef = $state<{ handleKeyDown: (e: KeyboardEvent) => boolean } | null>(null);
+   mention = $state<MentionAutocompleteState | null>(null);
+   mentionRef = $state<{ handleKeyDown: (e: KeyboardEvent) => boolean } | null>(null);
++  room = $state<RoomAutocompleteState | null>(null);
++  roomRef = $state<{ handleKeyDown: (e: KeyboardEvent) => boolean } | null>(null);
+ 
+   constructor(
+     private readonly getEditorApi: () => ComposerEditorApi | null,
+     private readonly getMembers: () => RoomMember[],
+     private readonly getRoles: () => MentionRole[] = () => [],
+     /** Users that rank first among matches, such as thread participants. */
+-    private readonly getPrioritizedUserIds?: () => ReadonlySet<string> | undefined
++    private readonly getPrioritizedUserIds?: () => ReadonlySet<string> | undefined,
++    /** Rooms for `#` autocomplete; null turns it off. */
++    private readonly getRoomLinkSource: () => RoomLinkSource | null = () => null
+   ) {}
+ 
+   reset(): void {
+     this.emoji = null;
+     this.mention = null;
++    this.room = null;
+     this.tabCompletion = null;
+   }
+ 
+@@ -55,6 +72,34 @@ export class AutocompleteState {
+   update(): void {
+     this.updateEmoji();
+     this.updateMention();
++    this.updateRoom();
++  }
++
++  /** Rooms that `#` autocomplete offers. */
++  get rooms(): RoomLinkRoom[] {
++    return this.getRoomLinkSource()?.rooms ?? [];
++  }
++
++  closeRoom(): void {
++    this.room = null;
++  }
++
++  /** Replaces `#query` with a link to the room. */
++  selectRoom(room: RoomLinkRoom): void {
++    if (!this.room) return;
++    const editorApi = this.getEditorApi();
++    const source = this.getRoomLinkSource();
++    if (!editorApi || !source) return;
++
++    const charsToReplace = editorApi.getTextBeforeCursor().length - this.room.triggerStart;
++    const label = roomLinkLabel(room.name);
++    const href = buildRoomLinkURL(source.serverId, room.id);
++    if (editorApi.replaceTextBeforeCursorWithLink) {
++      editorApi.replaceTextBeforeCursorWithLink(charsToReplace, label, href);
++    } else {
++      editorApi.replaceTextBeforeCursor(charsToReplace, `[${label}](${href}) `);
++    }
++    this.room = null;
+   }
+ 
+   closeEmoji(): void {
+@@ -173,6 +218,32 @@ export class AutocompleteState {
+     }
+   }
+ 
++  private updateRoom(): void {
++    if (this.emoji || this.mention) {
++      this.room = null;
++      return;
++    }
++
++    const partial = this.getRoomPartialAtCursor();
++    this.room = partial ? { query: partial.query, triggerStart: partial.start } : null;
++  }
++
++  private getRoomPartialAtCursor(): { query: string; start: number } | null {
++    const editorApi = this.getEditorApi();
++    if (!editorApi || !this.getRoomLinkSource()) return null;
++    if (editorApi.isInCodeBlock()) return null;
++
++    const textBefore = editorApi.getTextBeforeCursor();
++    // `# ` at the start of a line is a heading, so the query needs a character.
++    const match = textBefore.match(/(?:^|\s)#([^\s#[\]()]+)$/u);
++    if (!match) return null;
++
++    return {
++      query: match[1],
++      start: textBefore.length - match[1].length - 1
++    };
++  }
++
+   private findMatchingMentions(partial: string): string[] {
+     return rankMentionCandidates(
+       partial,
+diff --git a/apps/frontend/src/lib/components/composer/editorTypes.ts b/apps/frontend/src/lib/components/composer/editorTypes.ts
+index 61fc9e983..71034a19d 100644
+--- a/apps/frontend/src/lib/components/composer/editorTypes.ts
++++ b/apps/frontend/src/lib/components/composer/editorTypes.ts
+@@ -47,6 +47,11 @@ export type ComposerEditorApi = {
+    * cursor is known.
+    */
+   replaceTextBeforeCursor: (charCount: number, replacement: string) => void;
++  /**
++   * Replace N characters before the cursor with a link and a trailing space.
++   * Editors without it get the Markdown link text instead.
++   */
++  replaceTextBeforeCursorWithLink?: (charCount: number, label: string, href: string) => void;
+   /** Insert plain text at the current cursor position. */
+   insertText: (text: string) => void;
+   /** Toggle formatting or insert a footnote at the current selection. */
+diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
+index 152a67915..2295b751c 100644
+--- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
++++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
+@@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
+ import { toast } from '$lib/ui/toast';
+ import { m } from '$lib/i18n/messages';
+ import { AttachmentsState } from './attachments.svelte';
+-import { AutocompleteState, type MentionRole } from './autocomplete.svelte';
++import { AutocompleteState, type MentionRole, type RoomLinkSource } from './autocomplete.svelte';
+ import { DraftState, draftKey } from './draft.svelte';
+ import {
+   emptyComposerIndentState,
+@@ -108,6 +108,8 @@ type MessageComposerDependencies = {
+   context: ComposerContext;
+   getMembers: () => RoomMember[];
+   getMentionPriorityUserIds: () => ReadonlySet<string> | undefined;
++  /** Rooms for `#` autocomplete; see `$lib/roomLinks`. */
++  getRoomLinkSource?: () => RoomLinkSource | null;
+   membersStore: RoomMembersStore;
+   mentionRolesStore: MentionRolesStore;
+   serverInfo: ServerInfoState;
+@@ -171,7 +173,8 @@ export class MessageComposerState {
+       () => this.editorApi,
+       () => this.mentionCandidates,
+       () => this.mentionRoles,
+-      () => this.mentionPriorityUserIds
++      () => this.mentionPriorityUserIds,
++      () => dependencies.getRoomLinkSource?.() ?? null
+     );
+     this.submission = new ComposerSubmissionState({
+       getAPI: dependencies.getMessageAPI,
+@@ -369,6 +372,9 @@ export class MessageComposerState {
+     if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
+       return true;
+     }
++    if (this.autocomplete.room?.query && this.autocomplete.roomRef?.handleKeyDown(event)) {
++      return true;
++    }
+     if (event.key === 'Enter' && this.#handleEnter(event)) return true;
+     if (event.key === 'Tab' && this.autocomplete.handleTabCompletion(event)) return true;
+     if (event.key !== 'Tab') this.autocomplete.resetTabCompletion();
+diff --git a/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts b/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts
+new file mode 100644
+index 000000000..c3d353690
+--- /dev/null
++++ b/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts
+@@ -0,0 +1,99 @@
++import { describe, expect, it, vi } from 'vitest';
++
++import type { ComposerEditorApi } from './editorTypes';
++import { AutocompleteState, type RoomLinkSource } from './autocomplete.svelte';
++
++vi.mock('$lib/roomLinks', async (importOriginal) => ({
++  ...(await importOriginal<typeof import('$lib/roomLinks')>()),
++  buildRoomLinkURL: (serverId: string, roomId: string) => `https://chat.test/${serverId}/${roomId}`
++}));
++
++const source: RoomLinkSource = {
++  serverId: 'origin',
++  rooms: [{ id: 'R123456789abcde', name: 'general', isMember: true }]
++};
++
++function editor(initialText: string, { withLinks = false, inCode = false } = {}) {
++  let text = initialText;
++  const links: { label: string; href: string }[] = [];
++  const api: ComposerEditorApi = {
++    getText: () => text,
++    setContent: (next) => {
++      text = next;
++    },
++    focus: () => {},
++    performEnter: () => {},
++    getTextBeforeCursor: () => text,
++    isInCodeBlock: () => inCode,
++    replaceTextBeforeCursor: (charCount, replacement) => {
++      text = text.slice(0, text.length - charCount) + replacement;
++    },
++    insertText: (inserted) => {
++      text += inserted;
++    },
++    toggleFormatting: () => {},
++    adjustIndent: () => false,
++    insertQuote: () => {}
++  };
++  if (withLinks) {
++    api.replaceTextBeforeCursorWithLink = (charCount, label, href) => {
++      text = text.slice(0, text.length - charCount) + label + ' ';
++      links.push({ label, href });
++    };
++  }
++  return { api, links, getText: () => text };
++}
++
++function autocomplete(api: ComposerEditorApi, roomSource: RoomLinkSource | null = source) {
++  return new AutocompleteState(
++    () => api,
++    () => [],
++    () => [],
++    undefined,
++    () => roomSource
++  );
++}
++
++describe('room autocomplete', () => {
++  it('opens after # and a character', () => {
++    const { api } = editor('see #gen');
++    const state = autocomplete(api);
++    state.update();
++    expect(state.room).toEqual({ query: 'gen', triggerStart: 4 });
++  });
++
++  it('stays closed for a heading, inside words, in code, and without rooms', () => {
++    for (const [text, options, roomSource] of [
++      ['# ', {}, source],
++      ['#', {}, source],
++      ['issue#12', {}, source],
++      ['#gen', { inCode: true }, source],
++      ['#gen', {}, null]
++    ] as const) {
++      const { api } = editor(text, options);
++      const state = autocomplete(api, roomSource);
++      state.update();
++      expect(state.room, text).toBeNull();
++    }
++  });
++
++  it('inserts a Markdown link without editor link support', () => {
++    const { api, getText } = editor('see #gen');
++    const state = autocomplete(api);
++    state.update();
++    state.selectRoom(source.rooms[0]);
++    expect(getText()).toBe('see [#general](https://chat.test/origin/R123456789abcde) ');
++    expect(state.room).toBeNull();
++  });
++
++  it('inserts a link through the editor when it supports links', () => {
++    const { api, links, getText } = editor('#gen', { withLinks: true });
++    const state = autocomplete(api);
++    state.update();
++    state.selectRoom(source.rooms[0]);
++    expect(getText()).toBe('#general ');
++    expect(links).toEqual([
++      { label: '#general', href: 'https://chat.test/origin/R123456789abcde' }
++    ]);
++  });
++});
+diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
+index 854597cd4..796060b24 100644
+--- a/apps/frontend/src/lib/i18n/catalogSections.js
++++ b/apps/frontend/src/lib/i18n/catalogSections.js
+@@ -15,6 +15,7 @@ export const catalogSections = /** @type {const} */ ([
+   'quick_switcher',
+   'rbac',
+   'room',
++  'room_links',
+   'room_list',
+   'search',
+   'server_settings',
+diff --git a/apps/frontend/src/lib/roomLinks.svelte.spec.ts b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
+new file mode 100644
+index 000000000..4c75d30a2
+--- /dev/null
++++ b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
+@@ -0,0 +1,130 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { RoomKind } from '@chatto/api-types/api/v1/rooms_pb';
++import type { RoomListItem } from '@chatto/client/server/rooms';
++import { type RegisteredServer } from '@chatto/client/server/registry';
++import { serverRegistry } from '$lib/client';
++import {
++  buildRoomLinkDirectory,
++  buildRoomLinkURL,
++  rankRoomLinkCandidates,
++  resolveRenderedRoomLinks,
++  type RoomLinkRoom
++} from './roomLinks';
++
++const generalId = 'R123456789abcde';
++const secretId = 'Rsecret12345678';
++const dmId = 'abcdef12345678';
++
++const originServer: RegisteredServer = {
++  id: 'origin',
++  url: 'https://chat.example.test',
++  name: 'Origin',
++  iconUrl: null,
++  token: null,
++  userId: null,
++  userLogin: null,
++  userDisplayName: null,
++  userAvatarUrl: null,
++  reauthRequiredAt: null,
++  addedAt: 1
++};
++
++function room(id: string, name: string, type = RoomKind.CHANNEL, member = true): RoomListItem {
++  return {
++    id,
++    name,
++    type,
++    isUniversal: false,
++    viewerIsMember: member,
++    viewerCanJoinRoom: true,
++    viewerCanManageRoom: false,
++    members: []
++  };
++}
++
++const directory = buildRoomLinkDirectory('origin', [
++  room(generalId, 'general'),
++  room(dmId, '', RoomKind.DM)
++]);
++
++function roomURL(roomId: string): string {
++  return `${window.location.origin}/chat/-/${roomId}`;
++}
++
++function anchor(href: string, label: string): string {
++  return `<p><a href="${href}">${label}</a></p>`;
++}
++
++describe('room links', () => {
++  beforeEach(() => {
++    vi.spyOn(serverRegistry, 'originServer', 'get').mockReturnValue(originServer);
++    vi.spyOn(serverRegistry, 'isOriginServer').mockImplementation((id) => id === 'origin');
++  });
++
++  afterEach(() => {
++    vi.restoreAllMocks();
++  });
++
++  it('builds an absolute room URL on the origin server', () => {
++    expect(buildRoomLinkURL('origin', generalId)).toBe(roomURL(generalId));
++  });
++
++  it('shows the current room name for a generated label', () => {
++    const html = resolveRenderedRoomLinks(anchor(roomURL(generalId), '#old-name'), directory);
++    const link = new DOMParser().parseFromString(html, 'text/html').querySelector('a')!;
++    expect(link.classList.contains('room-link')).toBe(true);
++    expect(link.textContent).toBe('#general');
++  });
++
++  it('names a bare room URL', () => {
++    const html = resolveRenderedRoomLinks(
++      anchor(roomURL(generalId), roomURL(generalId)),
++      directory
++    );
++    expect(html).toContain('>#general</a>');
++  });
++
++  it('keeps a custom label', () => {
++    const html = resolveRenderedRoomLinks(anchor(roomURL(generalId), 'over here'), directory);
++    expect(html).toContain('class="room-link"');
++    expect(html).toContain('>over here</a>');
++  });
++
++  it('replaces a link to a room without access with an unknown room chip', () => {
++    const html = resolveRenderedRoomLinks(anchor(roomURL(secretId), '#secret'), directory);
++    const doc = new DOMParser().parseFromString(html, 'text/html');
++    expect(doc.querySelector('a')).toBeNull();
++    expect(doc.querySelector('.room-link-unknown')).not.toBeNull();
++    expect(html).not.toContain('secret');
++  });
++
++  it('keeps DM links, thread links and other links unchanged', () => {
++    const inputs = [
++      anchor(roomURL(dmId), 'dm'),
++      anchor(`${roomURL(generalId)}/Ethread12345678`, '#thread'),
++      anchor('https://example.com/chat/-/R123456789abcde', '#external')
++    ];
++    for (const input of inputs) {
++      expect(resolveRenderedRoomLinks(input, directory)).toBe(input);
++    }
++  });
++
++  it('changes nothing before the room list loads', () => {
++    const input = anchor(roomURL(secretId), '#secret');
++    expect(resolveRenderedRoomLinks(input, null)).toBe(input);
++  });
++
++  it('ranks rooms by match, then joined rooms first', () => {
++    const rooms: RoomLinkRoom[] = [
++      { id: 'a', name: 'random', isMember: true },
++      { id: 'b', name: 'dev-talk', isMember: false },
++      { id: 'c', name: 'dev', isMember: true },
++      { id: 'd', name: 'devops', isMember: true }
++    ];
++    expect(rankRoomLinkCandidates('dev', rooms).map((r) => r.name)).toEqual([
++      'dev',
++      'devops',
++      'dev-talk'
++    ]);
++  });
++});
+diff --git a/apps/frontend/src/lib/roomLinks.ts b/apps/frontend/src/lib/roomLinks.ts
+new file mode 100644
+index 000000000..70dd824f9
+--- /dev/null
++++ b/apps/frontend/src/lib/roomLinks.ts
+@@ -0,0 +1,172 @@
++/**
++ * Room links in message bodies.
++ *
++ * A room link is a plain Markdown link to a chat room route, such as
++ * `[#general](https://chat.example/chat/-/<roomId>)`. The composer inserts it
++ * with `#` autocomplete; clients without this feature still see a working
++ * link. After rendering, `resolveRenderedRoomLinks` turns the room links into
++ * room chips that show the current room name, or an "unknown room" chip when
++ * the viewer cannot see the room.
++ */
++
++import { resolve } from '$app/paths';
++import { RoomKind } from '@chatto/api-types/api/v1/rooms_pb';
++import type { RoomListItem, RoomListView } from '@chatto/client/server/rooms';
++import { classifyMessageBodyChatLink } from '$lib/messageLinks';
++import { serverIdToSegment } from '$lib/navigation';
++import { fuzzyMatch } from '$lib/fuzzyMatch';
++import { parseTrustedMarkdownHtml } from '$lib/security/trustedHtml';
++import { m } from '$lib/i18n/messages';
++
++/** A room that `#` autocomplete offers and room chips can name. */
++export type RoomLinkRoom = {
++  id: string;
++  name: string;
++  description?: string | null;
++  isMember: boolean;
++};
++
++/**
++ * Rooms of one server that room links can name, keyed by room ID. Contains
++ * every non-DM room that the viewer can see; a link to any other room shows as
++ * an unknown room.
++ */
++export type RoomLinkDirectory = {
++  serverId: string;
++  rooms: ReadonlyMap<string, RoomLinkRoom>;
++  /** DM rooms keep their link unchanged; they have no room name. */
++  directMessageIds: ReadonlySet<string>;
++};
++
++/** Builds the room link directory from the server's room list. */
++export function buildRoomLinkDirectory(
++  serverId: string,
++  rooms: readonly RoomListItem[]
++): RoomLinkDirectory {
++  const named = new Map<string, RoomLinkRoom>();
++  const directMessageIds = new Set<string>();
++  for (const room of rooms) {
++    if (room.type === RoomKind.DM) {
++      directMessageIds.add(room.id);
++      continue;
++    }
++    named.set(room.id, {
++      id: room.id,
++      name: room.name,
++      description: room.description,
++      isMember: room.viewerIsMember === true
++    });
++  }
++  return { serverId, rooms: named, directMessageIds };
++}
++
++/**
++ * Builds the room link directory from a server store's room list, or returns
++ * null while the list loads. Reactive when called in a reactive context.
++ * Test stores may have no room list.
++ */
++export function roomLinkDirectoryFor(
++  serverId: string,
++  roomList: RoomListView | undefined
++): RoomLinkDirectory | null {
++  if (!roomList || roomList.isLoading) return null;
++  return buildRoomLinkDirectory(serverId, roomList.rooms);
++}
++
++/** Absolute URL of a room, as inserted by `#` autocomplete. */
++export function buildRoomLinkURL(serverId: string, roomId: string): string {
++  const path = resolve('/chat/[serverId]/[roomId]', {
++    serverId: serverIdToSegment(serverId),
++    roomId
++  });
++  return typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString();
++}
++
++/** Link label for a room, as inserted by `#` autocomplete. */
++export function roomLinkLabel(name: string): string {
++  return `#${name.replace(/[[\]\\]/g, '')}`;
++}
++
++/**
++ * Ranks rooms for `#` autocomplete: by match quality, then joined rooms first,
++ * then by name.
++ */
++export function rankRoomLinkCandidates(
++  query: string,
++  rooms: Iterable<RoomLinkRoom>,
++  limit = 10
++): RoomLinkRoom[] {
++  const scored: { room: RoomLinkRoom; score: number }[] = [];
++  for (const room of rooms) {
++    const score = query ? fuzzyMatch(query, room.name) : 1;
++    if (score === null || score <= 0) continue;
++    scored.push({ room, score });
++  }
++  scored.sort(
++    (a, b) =>
++      b.score - a.score ||
++      Number(b.room.isMember) - Number(a.room.isMember) ||
++      a.room.name.localeCompare(b.room.name)
++  );
++  return scored.slice(0, limit).map(({ room }) => room);
++}
++
++/** Whether the label of a room link is generated, so the chip may replace it. */
++function hasGeneratedLabel(anchor: Element, roomId: string): boolean {
++  const label = anchor.textContent?.trim() ?? '';
++  if (label.startsWith('#')) return true;
++  // A bare (linkified) room URL.
++  const link = classifyMessageBodyChatLink(label);
++  return link?.kind === 'room' && link.roomId === roomId;
++}
++
++function unknownRoomChip(doc: Document): HTMLSpanElement {
++  const chip = doc.createElement('span');
++  chip.className = 'room-link room-link-unknown';
++  chip.setAttribute('title', m('room_links.unknown_title'));
++  const icon = doc.createElement('span');
++  icon.className = 'iconify icon-[uil--lock] room-link-icon';
++  icon.setAttribute('aria-hidden', 'true');
++  chip.append(icon, doc.createTextNode(m('room_links.unknown')));
++  return chip;
++}
++
++/**
++ * Turns the room links in HTML from `renderMarkdown` into room chips. A room
++ * link points to a room route, not to a thread or message.
++ *
++ * Links to rooms of `directory.serverId` that the viewer can see show the
++ * current room name when their label is generated (`#name` or a bare URL);
++ * custom labels stay. Links to rooms that the viewer cannot see become a
++ * non-clickable "unknown room" chip. Links to other servers and DMs stay
++ * unchanged. Without a directory (room list not loaded yet) nothing changes.
++ */
++export function resolveRenderedRoomLinks(
++  html: string,
++  directory: RoomLinkDirectory | null
++): string {
++  // Quick skip without DOM parsing when the HTML has no chat route link.
++  if (!directory || !html.includes('/chat/')) return html;
++
++  const doc = parseTrustedMarkdownHtml(html);
++  for (const anchor of doc.body.querySelectorAll('a[href]')) {
++    const link = classifyMessageBodyChatLink(anchor.getAttribute('href') ?? '');
++    if (link?.kind !== 'room' || link.serverId !== directory.serverId) continue;
++    const roomId = link.roomId;
++    if (directory.directMessageIds.has(roomId)) continue;
++
++    const room = directory.rooms.get(roomId);
++    if (!room) {
++      anchor.replaceWith(unknownRoomChip(doc));
++      continue;
++    }
++
++    anchor.classList.add('room-link');
++    if (hasGeneratedLabel(anchor, roomId)) {
++      anchor.textContent = roomLinkLabel(room.name);
++      anchor.setAttribute('dir', 'auto');
++    }
++  }
++
++  return doc.body.innerHTML;
++}
+-- 
+2.56.0
+

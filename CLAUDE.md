@@ -44,9 +44,12 @@ Known expected failures with the patches applied: upstream's `catalogs.spec.ts` 
 - `0003-image-annotations` — pins/highlighter on images, each annotation stored as a thread reply with a hidden marker link. Server part: `cli/internal/core/image_annotations.go` + one line in `messages.go` (annotation replies don't auto-follow the thread).
 - `0004-nachtgold-scheme` — colour scheme of the server branding (`branding/`): surface tone `navy`, accent `gold`, and a `colorSchemes.nachtgold` preset in `userPreferences.svelte.ts` shown in App Preferences → Appearance. Frontend only.
 
+- `0005-room-links` — `#name` autocomplete in the composer inserts a plain room link; rendered room links become chips with the current room name, or "unknown room" without access. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
+
 Fork features communicate through **marker links in message bodies** rather than new server APIs, so unpatched clients just see a plain link:
 - Dice: `[🎲](#chatto-dice:<kind>.<sides>.<value>,…;by=<userId>)` — the bot ↔ frontend contract; full spec in README.md.
 - Annotations: `[⌖](#chatto-annot:v1:<assetId>:pin|hl|mv:…)`, coordinates 0…10000.
+- Room links: ordinary links to `/chat/<server>/<roomId>`; no marker needed.
 
 ## Bots (`bots/`)
 

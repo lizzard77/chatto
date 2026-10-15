@@ -118,6 +118,16 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   no server-wide default. Frontend only, strings in en-GB and de-DE (as with 0001/0002). Upstream's
   appearance page spec expects 3 panels and already fails with 0002 (dice panel); 0004 adds none.
 
+- `0005-room-links.patch` – links to rooms. Typing `#` plus at least one character in the composer
+  offers the server's rooms (joined rooms rank first among equal matches); Enter/Tab inserts a
+  normal Markdown link `[#name](<origin>/chat/<server>/<roomId>)`, so unpatched clients and bots
+  see a working link. Rendered links to a room show as a chip with the **current** room name if
+  the label is generated (`#…` or the bare URL); custom labels stay. Links to rooms the viewer
+  cannot see (private without access, deleted, archived) become a non-clickable **"unknown room"**
+  chip, so the room name in the label does not leak. DMs, threads, messages and other servers stay
+  plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only. The `room` route is
+  0.6 KiB below its bundle budget with all patches.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:
