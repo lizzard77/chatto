@@ -907,5 +907,5 @@ index 000000000..fc15c4942
 +  return doc.body.innerHTML;
 +}
 -- 
-2.56.0
+2.47.3
 
