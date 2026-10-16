@@ -10,7 +10,8 @@ import {
     RealtimeInitialState
 } from './gen/chatto/realtime/v1/realtime_pb.js';
 import { SYSTEMS, helpText, modeText, roll } from './rolls.mjs';
-import { isGm, roomSystem, setGm, setRoomSystem } from './storage.mjs';
+import { dealRound, parseNames } from './initiative.mjs';
+import { isGm, roomInitiative, roomSystem, setGm, setRoomInitiative, setRoomSystem } from './storage.mjs';
 
 // Konfiguration
 const chattoUrl = (process.env.CHATTO_URL || 'http://chatto:4000').replace(/\/$/, '');
@@ -107,6 +108,11 @@ async function handleCommand(message) {
         case 'r':
             return reply(message, roll(args, { system, gm, macros }));
 
+        case 'ini':
+        case 'init':
+            if (system !== 'swade') return send('🃏 `!ini` gibt es nur für Savage Worlds (`!system swade`).');
+            return initiative(roomId, args, send);
+
         case 'system': {
             const wanted = args[0]?.toLowerCase();
             if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\`, \`!system swade\` oder \`!system raw\`.`);
@@ -135,6 +141,41 @@ async function handleCommand(message) {
             // Unbekannter Command – Hilfe anzeigen
             if (command) return send(helpText(system));
     }
+}
+
+// Savage-Worlds-Initiative (Aktionsdeck pro Raum)
+async function initiative(roomId, args, send) {
+    const current = roomInitiative(roomId);
+    const sub = args[0]?.toLowerCase();
+
+    if (sub === 'neu' || sub === 'new' || sub === 'mischen') {
+        await setRoomInitiative(roomId, { names: current?.names ?? [], deck: [], reshuffle: true });
+        return send('🔀 Aktionsdeck wird vor der nächsten Runde neu gemischt.');
+    }
+
+    // `+Name` / `-Name`: Teilnehmerliste ändern, ohne zu ziehen
+    if (args.length && /^[+-]/.test(args[0])) {
+        let names = current?.names ?? [];
+        let sign = '+';
+        // `+Ork -Mira`, `+Ork, Troll` oder `+Großer Ork` (mit Komma) – Vorzeichen gilt bis zum nächsten
+        for (const part of args.join(' ').split(/\s*,\s*|\s+(?=[+-])/)) {
+            if (/^[+-]/.test(part)) sign = part[0];
+            const name = part.replace(/^[+-]/, '').trim();
+            if (!name) continue;
+            names = names.filter(n => n.toLowerCase() !== name.toLowerCase());
+            if (sign === '+') names.push(name);
+        }
+        await setRoomInitiative(roomId, { ...current, names });
+        return send(names.length
+            ? `🃏 Teilnehmer: ${names.join(', ')} — nächste Runde mit \`!ini\``
+            : '🃏 Keine Teilnehmer mehr. Neu starten mit `!ini Name1 Name2 …`');
+    }
+
+    const names = args.length ? parseNames(args) : current?.names ?? [];
+    if (!names.length) return send('🃏 Wer ist dabei? `!ini Ragnar Mira Goblins` (Namen mit Leerzeichen per Komma trennen)');
+    const { text, state } = dealRound(current, names);
+    await setRoomInitiative(roomId, state);
+    return send(text);
 }
 
 // ---------------------------------------------------------------------------

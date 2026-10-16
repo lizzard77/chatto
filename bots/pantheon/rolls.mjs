@@ -7,6 +7,7 @@
  */
 
 import { DiceRoll, Parser, Dice, Results } from '@dice-roller/rpg-dice-roller';
+import { INITIATIVE_HELP } from './initiative.mjs';
 
 const die = (sides) => Math.floor(Math.random() * sides) + 1;
 const signed = (n) => (n > 0 ? `+${n}` : n < 0 ? `${n}` : '');
@@ -259,6 +260,7 @@ const HELP = {
         '`!roll d4-2` → ungeübt',
         '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
         '`!roll 3d6x`, `!roll d8x+1` → einfacher Wurf: explodiert nicht, kein Wild Die, keine Steigerungen',
+        ...INITIATIVE_HELP,
         'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards)'
     ],
     raw: [

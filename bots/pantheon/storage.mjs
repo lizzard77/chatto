@@ -1,5 +1,5 @@
 /**
- * Zustand des Bots: GM-Modus pro User, Spielsystem pro Raum.
+ * Zustand des Bots: GM-Modus pro User, Spielsystem und Initiative pro Raum.
  * Eine JSON-Datei unter storage/ (im Container als Volume gemountet).
  */
 
@@ -34,6 +34,14 @@ export function setGm(userId, gm) {
 }
 
 export const roomSystem = (roomId) => state.rooms[roomId]?.system ?? 'dh';
+
+/** Initiative-Zustand des Raums (Teilnehmer, Aktionsdeck), siehe initiative.mjs. */
+export const roomInitiative = (roomId) => state.rooms[roomId]?.initiative;
+
+export function setRoomInitiative(roomId, initiative) {
+    state.rooms[roomId] = { ...state.rooms[roomId], initiative };
+    return save();
+}
 
 export function setRoomSystem(roomId, system) {
     state.rooms[roomId] = { ...state.rooms[roomId], system };

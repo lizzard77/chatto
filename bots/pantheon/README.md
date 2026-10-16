@@ -18,6 +18,7 @@
 | `!system dh` / `swade` / `raw` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
 | `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
 | `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
+| `!ini …` / `!init …` | Savage-Worlds-Initiative mit Aktionsdeck, siehe unten |
 | `!help` / `!hilfe` | Hilfe zu allen Systemen, das des Raums zuerst |
 
 **Daggerheart:** `!roll` = Duality Dice (2d12 Hope + Fear), `+N`/`-N`, `adv`/`dis` (±d6).
@@ -29,6 +30,13 @@ zählt; Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden = kritischer Feh
 Im GM-Modus ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards).
 Ein `x` hinter dem Würfel (`!roll 3d6x`, `!roll d8x+1`) würfelt einfach: explodiert nicht, kein Wild
 Die, keine Auswertung – auch für Spieler.
+
+**Initiative (nur Savage Worlds):** `!ini Ragnar Mira Goblins` zieht aus dem Aktionsdeck (52 Karten
++ 2 Joker) je eine Karte und gibt die Reihenfolge aus (Joker, Ass … 2, bei gleichem Wert ♠ ♥ ♦ ♣).
+`!ini` zieht die nächste Runde für dieselben Teilnehmer, `!ini +Ork` / `!ini -Mira` ändert die Liste,
+`!ini neu` mischt. Nach einer Runde mit Joker oder bei leerem Deck wird automatisch neu gemischt.
+Namen mit Leerzeichen per Komma trennen. Deck und Teilnehmer liegen pro Raum in `storage/state.json`.
+Edges wie Level Headed oder Quick wertet der Bot nicht aus.
 
 **Freies Würfeln (`raw`):** `!roll 3w6+4` würfelt direkt nach der Notation, ohne Spielregeln
 und unabhängig vom GM-Modus.
