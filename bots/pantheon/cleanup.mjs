@@ -1,0 +1,136 @@
+/**
+ * Einmaliges Aufräumen alter Würfe: löscht `!…`-Befehle, die Pantheon beantwortet hat, und
+ * schreibt den Namen des Würfelnden vor die alte Antwort – so sehen alte Würfe aus wie neue.
+ *
+ * Standard ist ein Probelauf, der nur zählt. Erst `APPLY=1` ändert Nachrichten.
+ *   node cleanup.mjs                     Probelauf über alle Räume des Bots
+ *   ROOM=<roomId> node cleanup.mjs       nur ein Raum
+ *   APPLY=1 node cleanup.mjs             wirklich löschen und bearbeiten
+ * Im Container: docker exec -i -e APPLY=1 chatto-pantheon node --input-type=module - < cleanup.mjs
+ *
+ * Nur die Hauptzeitleiste der Räume; Befehle in Threads bleiben stehen.
+ */
+
+const chattoUrl = (process.env.CHATTO_URL || 'http://chatto:4000').replace(/\/$/, '');
+const apiKey = process.env.CHATTO_API_KEY;
+const prefix = process.env.COMMAND_PREFIX || '!';
+const apply = process.env.APPLY === '1';
+const onlyRoom = process.env.ROOM || null;
+
+if (!apiKey) {
+    console.error('Fehler: CHATTO_API_KEY nicht gesetzt!');
+    process.exit(1);
+}
+
+async function rpc(service, method, body = {}) {
+    const res = await fetch(`${chattoUrl}/api/connect/chatto.api.v1.${service}/${method}`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'Connect-Protocol-Version': '1'
+        },
+        body: JSON.stringify(body)
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`${service}/${method} → HTTP ${res.status}: ${text}`);
+    return text ? JSON.parse(text) : {};
+}
+
+const escapeMarkdown = (text) => text.replace(/[\\`*_~[\]()#>|]/g, '\\$&');
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function memberRooms() {
+    const rooms = [];
+    let page;
+    do {
+        const res = await rpc('RoomDirectoryService', 'ListRooms', page ? { page } : {});
+        for (const entry of res.rooms ?? []) {
+            if (!entry.viewerState?.isMember) continue;
+            const granted = new Set((entry.viewerState.permissions ?? []).filter(p => p.granted).map(p => p.permission));
+            rooms.push({ id: entry.room.id, name: entry.room.name, canManage: granted.has('message.manage') });
+        }
+        page = res.page?.nextPageToken ? { pageToken: res.page.nextPageToken } : null;
+    } while (page);
+    return rooms;
+}
+
+// Alle Nachrichten der Hauptzeitleiste, älteste zuerst, und die Nutzerprofile dazu
+async function roomMessages(roomId) {
+    const messages = [];
+    const users = {};
+    let before;
+    for (;;) {
+        const { page } = await rpc('RoomService', 'GetRoomEvents', { roomId, limit: 500, ...(before ? { before } : {}) });
+        Object.assign(users, page?.includes?.users ?? {});
+        for (const event of page?.events ?? []) {
+            const message = event.messagePosted?.message;
+            if (message) messages.push(message);
+        }
+        if (!page?.hasOlder || !page.startCursor) break;
+        before = page.startCursor;
+    }
+    messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return { messages, users };
+}
+
+const viewer = await rpc('ViewerService', 'GetViewer');
+const botId = viewer.user?.profile?.id;
+if (!botId) throw new Error('Viewer-Antwort ohne user.profile.id');
+
+console.log(apply ? '⚠️  APPLY: Nachrichten werden gelöscht und bearbeitet' : '🔍 Probelauf – es wird nichts geändert');
+let totalDeleted = 0;
+let totalEdited = 0;
+
+for (const room of await memberRooms()) {
+    if (onlyRoom && room.id !== onlyRoom) continue;
+    const { messages, users } = await roomMessages(room.id);
+    const byId = new Map(messages.map(m => [m.id, m]));
+
+    // Paare: Befehl eines Menschen + Antwort des Bots darauf
+    const pairs = [];
+    for (const reply of messages) {
+        if (reply.actorId !== botId || !reply.inReplyTo) continue;
+        const command = byId.get(reply.inReplyTo);
+        if (!command || command.actorId === botId) continue;
+        if (!command.body?.trimStart().startsWith(prefix)) continue;
+        pairs.push({ command, reply });
+    }
+    const commandIds = new Set(pairs.map(p => p.command.id));
+    console.log(`\n# ${room.name} (${room.id})${room.canManage ? '' : ' – ⚠️ Bot hat hier kein message.manage'}`);
+    console.log(`  ${pairs.length} beantwortete Befehle, ${commandIds.size} davon zu löschen`);
+    if (!pairs.length) continue;
+    if (apply && !room.canManage) {
+        console.log('  übersprungen: ohne message.manage kann der Bot keine Befehle löschen');
+        continue;
+    }
+
+    const samples = pairs.slice(-2);
+    for (const { command, reply } of samples) {
+        const name = users[command.actorId]?.displayName || users[command.actorId]?.login || '?';
+        console.log(`  z. B. „${command.body.trim().slice(0, 40)}“ → „**${name}** ${reply.body.slice(0, 50).replace(/\n/g, ' ')}…“`);
+    }
+    if (!apply) continue;
+
+    for (const { command, reply } of pairs) {
+        const user = users[command.actorId];
+        const name = user?.displayName || user?.login;
+        const tag = name ? `**${escapeMarkdown(name)}** ` : '';
+        // Mehrfach ausgeführt bleibt das Ergebnis gleich
+        if (tag && !reply.body.startsWith(tag)) {
+            await rpc('MessageService', 'UpdateMessage', {
+                roomId: room.id, eventId: reply.id, body: tag + reply.body, updateMask: 'body'
+            });
+            totalEdited++;
+            await sleep(50);
+        }
+    }
+    for (const id of commandIds) {
+        await rpc('MessageService', 'DeleteMessage', { roomId: room.id, eventId: id });
+        totalDeleted++;
+        await sleep(50);
+    }
+    console.log(`  erledigt`);
+}
+
+if (apply) console.log(`\n✅ ${totalDeleted} Befehle gelöscht, ${totalEdited} Antworten mit Namen versehen`);

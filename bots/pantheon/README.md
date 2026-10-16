@@ -49,6 +49,15 @@ schreibt stattdessen den Namen des Würfelnden vor das Ergebnis (`**Phil** 🎲 
 braucht der Bot `message.manage` in den Räumen; fehlt sie, bleibt der Befehl stehen (Warnung im Log).
 Mit `DELETE_COMMANDS=false` antwortet er wie früher als Antwort auf den Befehl.
 
+Alte Würfe von vor dieser Änderung räumt `cleanup.mjs` auf: Es schreibt den Namen vor jede alte
+Antwort und löscht die beantworteten Befehle (nur Hauptzeitleiste, keine Threads). Ohne `APPLY=1`
+nur ein Probelauf, der zählt:
+
+```sh
+ssh he1.lizzard77.dev 'docker exec -i chatto-pantheon node --input-type=module -' < cleanup.mjs
+ssh he1.lizzard77.dev 'docker exec -i -e APPLY=1 -e ROOM=<roomId> chatto-pantheon node --input-type=module -' < cleanup.mjs
+```
+
 **3D-Würfel:** Jede Antwort bekommt einen Marker-Link `[🎲](#chatto-dice:…)` (Format: README im
 Repo-Root). Der gepatchte Chatto-Client rollt die Würfel in 3D, bei Savage Worlds mit Wild Die und
 Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marker weg.
