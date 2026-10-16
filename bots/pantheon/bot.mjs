@@ -19,6 +19,9 @@ const apiKey = process.env.CHATTO_API_KEY;
 const prefix = process.env.COMMAND_PREFIX || '!';
 // 3D-Würfel im Chatto-Fork (Patch 0002): Würfel als Marker-Link an die Antwort hängen
 const dice3d = process.env.DICE_3D !== 'false';
+// Befehlsnachricht (`!r 2d6`) nach der Antwort löschen, damit der Kanal nicht vollläuft.
+// Die Antwort nennt dann den Würfelnden. Braucht `message.manage` im Raum.
+const deleteCommands = process.env.DELETE_COMMANDS !== 'false';
 
 const PROTOCOL_VERSION = 4;
 const HEARTBEAT_STALL_MS = 75_000;
@@ -77,16 +80,53 @@ function diceMarker(dice, rollerId, swade) {
     return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw})`;
 }
 
+// Anzeigenamen der Würfelnden, 10 Minuten zwischengespeichert
+const NAME_TTL_MS = 10 * 60_000;
+const names = new Map();
+async function displayName(userId) {
+    const cached = names.get(userId);
+    if (cached && Date.now() - cached.at < NAME_TTL_MS) return cached.name;
+    let name = null;
+    try {
+        const res = await rpc('chatto.api.v1.UserService', 'GetUser', { userId });
+        name = res.user?.user?.displayName || res.user?.user?.login || null;
+    } catch (error) {
+        console.warn('Anzeigename nicht lesbar:', error.message);
+    }
+    names.set(userId, { name, at: Date.now() });
+    return name;
+}
+
+const escapeMarkdown = (text) => text.replace(/[\\`*_~[\]()#>|]/g, '\\$&');
+
+// Räume, in denen das Löschen schon gescheitert ist (Warnung nur einmal)
+const deleteDenied = new Set();
+async function deleteCommand(message) {
+    try {
+        await rpc('chatto.api.v1.MessageService', 'DeleteMessage', {
+            roomId: message.roomId,
+            eventId: message.eventId
+        });
+    } catch (error) {
+        if (deleteDenied.has(message.roomId)) return;
+        deleteDenied.add(message.roomId);
+        console.warn(`⚠️  Befehl in Raum ${message.roomId} nicht gelöscht (fehlt message.manage?):`, error.message);
+    }
+}
+
 async function reply(message, { text, dice, swade }) {
+    // Wird der Befehl gelöscht, nennt die Antwort den Würfelnden statt auf den Befehl zu antworten
+    const name = deleteCommands ? await displayName(message.sender) : null;
     // Bot-Antworten sollen niemanden anpingen
-    let body = text.replace(/@/g, '\\@');
+    let body = (name ? `**${escapeMarkdown(name)}** ` : '') + text.replace(/@/g, '\\@');
     if (dice3d) body += diceMarker(dice, message.sender, swade);
     await rpc('chatto.api.v1.MessageService', 'CreateMessage', {
         roomId: message.roomId,
         body,
         threadRootEventId: message.threadRootEventId || undefined,
-        inReplyTo: message.eventId
+        inReplyTo: deleteCommands ? undefined : message.eventId
     });
+    if (deleteCommands) await deleteCommand(message);
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +370,7 @@ async function startBot() {
     console.log(`   Chatto: ${chattoUrl}`);
     console.log(`   Command Prefix: ${prefix}`);
     console.log(`   3D-Würfel: ${dice3d ? 'an' : 'aus'}`);
+    console.log(`   Befehle löschen: ${deleteCommands ? 'an' : 'aus'}`);
     console.log(`   Makros: ${Object.keys(macros).join(', ') || 'keine'}`);
     connect();
 }

@@ -125,6 +125,15 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   chip, so the room name in the label does not leak. DMs, threads, messages and other servers stay
   plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 
+- `0006-dice-groups.patch` – compact dice rolls. Consecutive rolls of one dice bot (bot messages
+  with a dice marker) collapse into one block in the room and thread timeline: the newest roll
+  stays visible, **"Show N earlier rolls"** below it opens the rest. Another message, a day
+  separator or the unread separator ends a run; a single roll stays a normal message. Together
+  with Pantheon deleting the `!r …` command message, five rolls take the space of one. Read
+  position, jumps to a collapsed roll (it opens), recovery and scroll anchoring handle the group.
+  Detects the marker itself, so it does not depend on 0002. Code in `virtualItems.ts` and
+  `EventList.svelte` under `apps/frontend/src/routes/chat/[serverId]/[roomId]/`. Frontend only.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:

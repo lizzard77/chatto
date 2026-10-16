@@ -44,6 +44,11 @@ und unabhängig vom GM-Modus.
 In allen Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
 `DEFAULT_MACROS`; `w` statt `d` (`3w6`) wird als deutsche Schreibweise akzeptiert.
 
+**Aufgeräumter Kanal:** Pantheon löscht die Befehlsnachricht (`!r 2d6`) nach seiner Antwort und
+schreibt stattdessen den Namen des Würfelnden vor das Ergebnis (`**Phil** 🎲 **9** — 2d6: …`). Dafür
+braucht der Bot `message.manage` in den Räumen; fehlt sie, bleibt der Befehl stehen (Warnung im Log).
+Mit `DELETE_COMMANDS=false` antwortet er wie früher als Antwort auf den Befehl.
+
 **3D-Würfel:** Jede Antwort bekommt einen Marker-Link `[🎲](#chatto-dice:…)` (Format: README im
 Repo-Root). Der gepatchte Chatto-Client rollt die Würfel in 3D, bei Savage Worlds mit Wild Die und
 Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marker weg.
@@ -52,7 +57,7 @@ Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marke
 
 1. Chatto: **Server Admin → Bots → Create Bot** (Username `pantheon`), API-Key kopieren.
 2. Auf der Detailseite des Bots für die gewünschten Räume (oder die Raumgruppe) erlauben:
-   `room.join`, `message.read`, `message.post`. Danach in der **Joined**-Zeile die Räume anhaken.
+   `room.join`, `message.read`, `message.post` und `message.manage` (zum Löschen der Befehle). Danach in der **Joined**-Zeile die Räume anhaken.
 3. `.env` nach `.env.example` anlegen, `CHATTO_API_KEY` eintragen.
 4. Image kommt aus GHCR (`ghcr.io/lizzard77/chatto-pantheon`, gebaut von `.github/workflows/images.yml`);
    `storage/` als Volume mounten.
