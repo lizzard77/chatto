@@ -275,28 +275,57 @@ let reconnectAttempt = 0;
 let stopped = false;
 let processing = Promise.resolve();
 
+// Befehle, die schon ausgeführt wurden (auch nach mehrfachem Bearbeiten nur einmal)
+const handledCommands = new Set();
+
+async function runCommand(message) {
+    if (!message.sender || message.sender === botUserId || !message.body) return;
+    if (!message.body.trimStart().startsWith(prefix)) return;
+    if (handledCommands.has(message.eventId)) return;
+    handledCommands.add(message.eventId);
+    if (handledCommands.size > 2000) handledCommands.delete(handledCommands.values().next().value);
+    try {
+        await handleCommand({ ...message, body: message.body.trim() });
+    } catch (error) {
+        console.error(`❌ Fehler bei "${message.body.trim()}":`, error.message);
+    }
+}
+
 async function handleEvent(event) {
-    if (event.event.case !== 'messagePosted') return;
     if (seenEventIds.has(event.id)) return;
     markSeen(event.id);
 
-    const posted = event.event.value;
-    const sender = event.actorId;
-    const body = posted.bodyPlaintext;
-    if (!sender || sender === botUserId || !body) return;
-    if (posted.echoOfEventId) return;
-    if (!body.trimStart().startsWith(prefix)) return;
-
-    try {
-        await handleCommand({
+    if (event.event.case === 'messagePosted') {
+        const posted = event.event.value;
+        if (posted.echoOfEventId) return;
+        return runCommand({
             eventId: event.id,
             roomId: posted.roomId,
             threadRootEventId: posted.threadRootEventId,
-            sender,
-            body: body.trim()
+            sender: event.actorId,
+            body: posted.bodyPlaintext
         });
-    } catch (error) {
-        console.error(`❌ Fehler bei "${body.trim()}":`, error.message);
+    }
+
+    // Erst nachträglich zum Befehl gemacht (`roll 2d6` → `!roll 2d6`): neuen Text holen
+    if (event.event.case === 'messageEdited') {
+        const { roomId, messageEventId } = event.event.value;
+        if (handledCommands.has(messageEventId)) return;
+        let message;
+        try {
+            ({ message } = await rpc('chatto.api.v1.MessageService', 'GetMessage', { roomId, eventId: messageEventId }));
+        } catch (error) {
+            console.warn('Bearbeitete Nachricht nicht lesbar:', error.message);
+            return;
+        }
+        if (!message || message.deletedAt) return;
+        return runCommand({
+            eventId: message.id,
+            roomId,
+            threadRootEventId: message.threadRootEventId,
+            sender: message.actorId,
+            body: message.body
+        });
     }
 }
 

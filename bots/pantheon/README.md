@@ -43,7 +43,7 @@ Edges wie Level Headed oder Quick wertet der Bot nicht aus.
 und unabhängig vom GM-Modus.
 
 In allen Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
-`DEFAULT_MACROS`; `w` statt `d` (`3w6`) wird als deutsche Schreibweise akzeptiert.
+`DEFAULT_MACROS`; `w`, `W` und `D` statt `d` (`3w6`, `3D6`) werden akzeptiert. Mehr als 999 Würfel auf einmal lehnt der Bot mit einer Meldung ab (Schaden in Savage Worlds: höchstens 10 je Würfeltyp). Ein nachträglich zum Befehl bearbeiteter Text (`roll 2d6` → `!roll 2d6`) wird ebenfalls ausgeführt.
 
 **Würfel-Thread pro Session:** `!dice` in einem Thread macht ihn zum Sammelthread des Raums.
 Ab dann landen alle Würfe (`!r …`, auch getippt im Kanal oder über den 🎲-Button des Forks,

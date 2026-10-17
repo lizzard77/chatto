@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Sat, 17 Oct 2026 17:28:23 +0200
+Subject: [PATCH] fix(frontend): keep backfilling a timeline that starts with
+ deleted messages
+
+A latest page of context-free tombstones shows an empty room. The backfill
+effect can run while the previous backfill call still settles, see that call
+in flight, and return; nothing reactive changes after that, so the room stays
+empty until it is opened again. A call that loaded a page now checks again
+itself, until it finds visible history or reaches the start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../src/routes/chat/[serverId]/[roomId]/EventList.svelte   | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
+index de2ab1ff9..03eb1f185 100644
+--- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
++++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
+@@ -783,12 +783,17 @@
+     }
+ 
+     underfilledBackfillInFlight = true;
++    // The effect below can run while this call still settles, see that the call is
++    // in flight, and return. Nothing reactive changes after that, so a call that
++    // loaded a page checks again itself; it stops at visible history or the start.
++    let loaded = false;
+     try {
+       // A fetched page can consist entirely of context-free tombstones. There is no
+       // Virtualizer in that state, but pagination still needs to walk backward
+       // until it finds visible history or reaches the beginning.
+       if (timelineEvents.length > 0 && filteredEvents.length === 0) {
+         await loadOlder(messageStore);
++        loaded = true;
+         return;
+       }
+ 
+@@ -813,9 +818,11 @@
+         messageEventCount < INITIAL_ROOM_MESSAGE_BACKFILL_TARGET;
+       if (scrollSize <= viewportSize + 50 || lacksInitialRoomMessages) {
+         await loadOlder(messageStore);
++        loaded = true;
+       }
+     } finally {
+       underfilledBackfillInFlight = false;
++      if (loaded && !destroyed) void loadOlderIfTimelineNeedsBackfill();
+     }
+   }
+ 
+-- 
+2.56.0
+

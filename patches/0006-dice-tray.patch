@@ -14,20 +14,22 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  apps/frontend/messages/de-DE/composer.json    |  18 ++
  apps/frontend/messages/en-GB/composer.json    |  18 ++
- .../composer/ComposerDiceTray.svelte          | 185 ++++++++++++++++++
+ .../composer/ComposerDiceTray.svelte          | 193 ++++++++++++++++++
  .../composer/ComposerToolbar.svelte           |   8 +-
  .../src/lib/diceTray/DiceTrayResults.svelte   |  97 +++++++++
+ apps/frontend/src/lib/diceTray/DieIcon.svelte |  47 +++++
  .../src/lib/diceTray/diceTray.svelte.spec.ts  |  63 ++++++
- .../src/lib/diceTray/diceTray.svelte.ts       | 166 ++++++++++++++++
+ .../src/lib/diceTray/diceTray.svelte.ts       | 166 +++++++++++++++
  .../[roomId]/ConversationPane.svelte          |   4 +
- 8 files changed, 558 insertions(+), 1 deletion(-)
+ 9 files changed, 613 insertions(+), 1 deletion(-)
  create mode 100644 apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
+ create mode 100644 apps/frontend/src/lib/diceTray/DieIcon.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 
 diff --git a/apps/frontend/messages/de-DE/composer.json b/apps/frontend/messages/de-DE/composer.json
-index ea3adf5b0..41c61ca5d 100644
+index ea3adf5b0..bae073c95 100644
 --- a/apps/frontend/messages/de-DE/composer.json
 +++ b/apps/frontend/messages/de-DE/composer.json
 @@ -73,6 +73,24 @@
@@ -41,7 +43,7 @@ index ea3adf5b0..41c61ca5d 100644
 +      "die": "W{sides}",
 +      "add_die": "{die} hinzufügen",
 +      "empty": "Würfel wählen",
-+      "clear": "Leeren",
++      "clear": "Auswahl zurücksetzen",
 +      "modifier": "Modifikator",
 +      "decrease": "Modifikator verringern",
 +      "increase": "Modifikator erhöhen",
@@ -56,7 +58,7 @@ index ea3adf5b0..41c61ca5d 100644
    }
  }
 diff --git a/apps/frontend/messages/en-GB/composer.json b/apps/frontend/messages/en-GB/composer.json
-index 10bb6be57..e4032e013 100644
+index 10bb6be57..44c97ed53 100644
 --- a/apps/frontend/messages/en-GB/composer.json
 +++ b/apps/frontend/messages/en-GB/composer.json
 @@ -73,6 +73,24 @@
@@ -70,7 +72,7 @@ index 10bb6be57..e4032e013 100644
 +      "die": "d{sides}",
 +      "add_die": "Add a {die}",
 +      "empty": "Pick dice",
-+      "clear": "Clear",
++      "clear": "Clear the selection",
 +      "modifier": "Modifier",
 +      "decrease": "Decrease modifier",
 +      "increase": "Increase modifier",
@@ -86,10 +88,10 @@ index 10bb6be57..e4032e013 100644
  }
 diff --git a/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
 new file mode 100644
-index 000000000..bb9c598f6
+index 000000000..445d19d6e
 --- /dev/null
 +++ b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,193 @@
 +<!--
 +@component
 +
@@ -113,6 +115,7 @@ index 000000000..bb9c598f6
 +    type DicePool,
 +    type DieSides
 +  } from '$lib/diceTray/diceTray.svelte';
++  import DieIcon from '$lib/diceTray/DieIcon.svelte';
 +
 +  let { disabled }: { disabled: boolean } = $props();
 +
@@ -214,7 +217,7 @@ index 000000000..bb9c598f6
 +            <button
 +              type="button"
 +              class={[
-+                'relative cursor-pointer rounded-md border border-border px-1 py-2 text-sm font-medium hover:bg-surface-emphasized',
++                'relative flex cursor-pointer flex-col items-center gap-0.5 rounded-md border border-border px-1 py-1.5 text-sm font-medium hover:bg-surface-emphasized',
 +                count > 0 && 'bg-surface-selected'
 +              ]}
 +              aria-label={m('composer.dice_tray.add_die', {
@@ -223,6 +226,7 @@ index 000000000..bb9c598f6
 +              onclick={() => addDie(sides)}
 +              oncontextmenu={(event) => removeDie(event, sides)}
 +            >
++              <DieIcon {sides} />
 +              {m('composer.dice_tray.die', { sides })}
 +              {#if count > 0}
 +                <span
@@ -232,9 +236,15 @@ index 000000000..bb9c598f6
 +              {/if}
 +            </button>
 +          {/each}
-+          <Button size="sm" variant="ghost" onclick={clear}>
-+            {m('composer.dice_tray.clear')}
-+          </Button>
++          <button
++            type="button"
++            class="flex cursor-pointer items-center justify-center rounded-md border border-border text-muted hover:bg-surface-emphasized hover:text-text"
++            aria-label={m('composer.dice_tray.clear')}
++            title={m('composer.dice_tray.clear')}
++            onclick={clear}
++          >
++            <span aria-hidden="true" class="iconify icon-[uil--trash-alt] text-lg"></span>
++          </button>
 +        </div>
 +
 +        <div class="flex items-center gap-2 text-sm">
@@ -411,6 +421,59 @@ index 000000000..aaa959863
 +    {/if}
 +  </div>
 +{/if}
+diff --git a/apps/frontend/src/lib/diceTray/DieIcon.svelte b/apps/frontend/src/lib/diceTray/DieIcon.svelte
+new file mode 100644
+index 000000000..e5a6c8b40
+--- /dev/null
++++ b/apps/frontend/src/lib/diceTray/DieIcon.svelte
+@@ -0,0 +1,47 @@
++<!--
++@component
++
++Outline of a polyhedral die (d4 to d100) for the dice tray. Decorative: the
++button that shows it has its own label.
++-->
++<script lang="ts">
++  import type { DieSides } from './diceTray.svelte';
++
++  let { sides, class: className = '' }: { sides: DieSides; class?: string } = $props();
++</script>
++
++<svg
++  viewBox="0 0 24 24"
++  class={['size-5', className]}
++  fill="none"
++  stroke="currentColor"
++  stroke-width="1.6"
++  stroke-linejoin="round"
++  stroke-linecap="round"
++  aria-hidden="true"
++>
++  {#if sides === 4}
++    <path d="M12 3 21 19.5H3Z" />
++    <path d="M12 3v16.5" opacity="0.5" />
++  {:else if sides === 6}
++    <rect x="4" y="4" width="16" height="16" rx="3" />
++    <circle cx="9" cy="9" r="1" fill="currentColor" stroke="none" />
++    <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
++    <circle cx="15" cy="15" r="1" fill="currentColor" stroke="none" />
++  {:else if sides === 8}
++    <path d="M12 2.5 20.5 12 12 21.5 3.5 12Z" />
++    <path d="M3.5 12h17" opacity="0.5" />
++  {:else if sides === 10}
++    <path d="M12 2.5 20.5 10 12 21.5 3.5 10Z" />
++    <path d="M3.5 10 12 14l8.5-4M12 14v7.5" opacity="0.5" />
++  {:else if sides === 12}
++    <path d="M12 2.5 21 9l-3.4 11H6.4L3 9Z" />
++    <path d="M12 7l3.8 2.8-1.5 4.7H9.7L8.2 9.8Z" opacity="0.5" />
++  {:else if sides === 20}
++    <path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z" />
++    <path d="M12 7.5 16 15H8ZM12 2.5v5M3.5 16.75 8 15M20.5 16.75 16 15" opacity="0.5" />
++  {:else}
++    <path d="M6.5 5 11 9.5 6.5 19 2 9.5Z" />
++    <path d="M17.5 5 22 9.5 17.5 19 13 9.5Z" />
++  {/if}
++</svg>
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
 new file mode 100644
 index 000000000..864e36e84

@@ -136,6 +136,12 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   room there. Code in `apps/frontend/src/lib/diceTray/` and
   `lib/components/composer/ComposerDiceTray.svelte`. Frontend only, independent of 0002.
 
+- `0007-tombstone-backfill.patch` – upstream bug fix. When the newest page of a room consists only
+  of deleted messages (for example after a cleanup), the room stayed empty after a reload until it
+  was opened again: the backfill effect could run while the previous backfill call was still
+  settling, return, and never run again. A backfill call that loaded a page now checks again
+  itself. One change in `EventList.svelte`; worth reporting upstream.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:

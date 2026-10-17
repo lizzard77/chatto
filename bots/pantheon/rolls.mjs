@@ -175,15 +175,31 @@ function notationDice(roll) {
 }
 
 // Deutsche Schreibweise: `3w6+4` → `3d6+4`, `w%` → `d%`
-const germanDice = (input) => input.replace(/(\d*)w(?=\d|%)/gi, '$1d');
+// Schreibweisen vereinheitlichen: `3w6`, `3W6`, `3D6` → `3d6`, `w%` → `d%`
+const germanDice = (input) => input.replace(/(\d*)[wd](?=\d|%)/gi, '$1d');
+
+// Mehr Würfel kann die Bibliothek nicht auf einmal werfen
+export const MAX_DICE = 999;
+
+// Gesamtzahl der Würfel in einer Notation, z. B. `3d6+2d8` → 5
+function diceCount(input) {
+    let total = 0;
+    for (const m of input.matchAll(/(\d*)d(?=\d|%|f)/gi)) total += m[1] ? parseInt(m[1], 10) : 1;
+    return total;
+}
 
 function notation(input, macros) {
     const macro = macros[input.toLowerCase()];
+    const normalized = macro || germanDice(input);
+    const count = diceCount(normalized);
+    if (count > MAX_DICE) {
+        return { text: `❌ Zu viele Würfel: höchstens ${MAX_DICE} auf einmal (\`${input}\` wären ${count}).` };
+    }
     let roll;
     try {
-        roll = new DiceRoll(macro || germanDice(input));
+        roll = new DiceRoll(normalized);
     } catch {
-        return { text: `❌ Ungültige Würfelnotation: \`${input}\`` };
+        return { text: `❌ Ungültige Würfelnotation: \`${input}\` – Beispiele: \`2d6+3\`, \`3w6\`, \`4d6kh3\`` };
     }
     const label = macro ? `${input.toLowerCase()} (${roll.notation})` : roll.notation;
     return { text: `🎲 **${roll.total}** — ${label}: ${roll.output.replace(/^[^:]*:\s*/, '')}`, dice: notationDice(roll) };
@@ -216,7 +232,10 @@ export function roll(args, { system, gm, macros }) {
         }
         const parsed = parseSwadeTerms(input);
         if (prefix === 'dmg') {
-            return parsed ? swadeDamage(parsed) : { text: `❌ Ungültiger Schadenswurf: \`${input}\`` };
+            if (parsed) return swadeDamage(parsed);
+            return /(\d{2,})[dw]/i.test(input) && parseInt(input.match(/(\d{2,})[dw]/i)[1], 10) > 10
+                ? { text: `❌ Zu viele Schadenswürfel: höchstens 10 je Würfeltyp (\`${input}\`).` }
+                : { text: `❌ Ungültiger Schadenswurf: \`${input}\` – Beispiel: \`!roll dmg d8+2d6+1\`` };
         }
         if (parsed && parsed.terms.length === 1 && parsed.terms[0].count === 1) {
             return swadeTrait(parsed, { wild: !gm || prefix === 'wild', gm });
