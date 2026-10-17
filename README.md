@@ -125,27 +125,31 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   chip, so the room name in the label does not leak. DMs, threads, messages and other servers stay
   plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 
-- `0006-dice-groups.patch` – compact dice rolls. Consecutive rolls of one dice bot (bot messages
-  with a dice marker) collapse into one block in the room and thread timeline: the newest roll
-  stays visible, **"Show N earlier rolls"** below it opens the rest. Another message, a day
-  separator or the unread separator ends a run; a single roll stays a normal message. Together
-  with Pantheon deleting the `!r …` command message, five rolls take the space of one. Read
-  position, jumps to a collapsed roll (it opens), recovery and scroll anchoring handle the group.
-  Detects the marker itself, so it does not depend on 0002. Code in `virtualItems.ts` and
-  `EventList.svelte` under `apps/frontend/src/routes/chat/[serverId]/[roomId]/`. Frontend only.
+- `0006-dice-tray.patch` – dice tray. A 🎲 button next to the attachment button in the composer
+  opens a flyout: pick d4–d100 (right-click removes a die), a modifier, then **Roll**, or
+  **Duality dice** for Daggerheart. The tray posts a plain `!r 2d6+1` for the dice bot, into the
+  room's dice thread once it knows it. A small card above the room composer shows the latest
+  result; a viewer whose own latest roll was a GM roll (`;gm=1` in the dice marker) sees the
+  latest result per player instead. The card follows live events, thread replies included, and
+  loads the newest results of the known dice thread on open; the dice thread and the GM flag are
+  device-local. Pantheon sets up the thread with `!dice` in a thread and moves all rolls of the
+  room there. Code in `apps/frontend/src/lib/diceTray/` and
+  `lib/components/composer/ComposerDiceTray.svelte`. Frontend only, independent of 0002.
 
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:
 
 ```
-[🎲](#chatto-dice:<kind>.<sides>.<value>,<kind>.<sides>.<value>,…;by=<userId>;sw=<outcome>)
+[🎲](#chatto-dice:<kind>.<sides>.<value>,<kind>.<sides>.<value>,…;by=<userId>;sw=<outcome>;gm=1)
 ```
 
 - `;by=<userId>` (optional): Chatto user ID of the person who rolled – the message author is the bot.
   Without `by`, the roll does not play with "Only my rolls".
 - `;sw=<outcome>` (optional): result of a Savage Worlds trait roll, shown as a banner: `cf` (critical
   failure), `fail`, `ok` (success), `r1`…`r9` (success with raises). Parameters may come in any order.
+- `;gm=1` (optional): the roll was made in the bot's GM mode (the dice tray shows GMs the latest roll
+  per player). Other `;<name>=<value>` parameters are ignored, so bots can add parameters safely.
 - `kind`: `hope`, `fear` (Daggerheart duality dice, gold/violet and labelled; together they produce
   the "with Hope / with Fear / Critical success" banner), `adv`/`dis` (d6 advantage/disadvantage),
   `gm` (GM's die), `wild` (Savage Worlds Wild Die, orange and labelled), `std`, `drop` (discarded die,

@@ -18,6 +18,7 @@
 | `!system dh` / `swade` / `raw` | Spielsystem für den Raum (Standard: Daggerheart); `!system` zeigt es an |
 | `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
 | `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
+| `!dice` (im Thread), `!dice aus` | Thread als Würfel-Sammelthread des Raums setzen / beenden |
 | `!ini …` / `!init …` | Savage-Worlds-Initiative mit Aktionsdeck, siehe unten |
 | `!help` / `!hilfe` | Hilfe zu allen Systemen, das des Raums zuerst |
 
@@ -43,6 +44,12 @@ und unabhängig vom GM-Modus.
 
 In allen Systemen geht freie Würfelnotation (`!roll 2d6+3`, `!roll 4d6kh3`) und Makros aus
 `DEFAULT_MACROS`; `w` statt `d` (`3w6`) wird als deutsche Schreibweise akzeptiert.
+
+**Würfel-Thread pro Session:** `!dice` in einem Thread macht ihn zum Sammelthread des Raums.
+Ab dann landen alle Würfe (`!r …`, auch getippt im Kanal oder über den 🎲-Button des Forks,
+Patch 0006) in diesem Thread; der Befehl verschwindet, die Antwort nennt den Würfelnden.
+`!dice aus` beendet das. Ist der Thread gelöscht, antwortet der Bot wieder im Raum.
+Würfe im GM-Modus tragen `;gm=1` im Marker; daran erkennt die Würfel-Leiste die SL-Ansicht.
 
 **Aufgeräumter Kanal:** Pantheon löscht die Befehlsnachricht (`!r 2d6`) nach seiner Antwort und
 schreibt stattdessen den Namen des Würfelnden vor das Ergebnis (`**Phil** 🎲 **9** — 2d6: …`). Dafür

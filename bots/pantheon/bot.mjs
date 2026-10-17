@@ -11,7 +11,10 @@ import {
 } from './gen/chatto/realtime/v1/realtime_pb.js';
 import { SYSTEMS, helpText, modeText, roll } from './rolls.mjs';
 import { dealRound, parseNames } from './initiative.mjs';
-import { isGm, roomInitiative, roomSystem, setGm, setRoomInitiative, setRoomSystem } from './storage.mjs';
+import {
+    isGm, roomDiceThread, roomInitiative, roomSystem,
+    setGm, setRoomDiceThread, setRoomInitiative, setRoomSystem
+} from './storage.mjs';
 
 // Konfiguration
 const chattoUrl = (process.env.CHATTO_URL || 'http://chatto:4000').replace(/\/$/, '');
@@ -67,8 +70,9 @@ async function rpc(service, method, body = {}) {
 // Gepatchte Clients rollen die Würfel in 3D und zeigen 🎲 als Replay-Button,
 // andere sehen einen harmlosen 🎲-Link. Format: README des Forks (Würfel-Marker).
 // `;by=` nennt den Würfelnden (Autor der Nachricht ist ja der Bot), für „nur meine Würfe“;
-// `;sw=` ist das Ergebnis eines Savage-Worlds-Eigenschaftswurfs für das Banner.
-function diceMarker(dice, rollerId, swade) {
+// `;sw=` ist das Ergebnis eines Savage-Worlds-Eigenschaftswurfs für das Banner;
+// `;gm=1` markiert Würfe im GM-Modus (die Würfel-Leiste zeigt GMs den letzten Wurf pro Spieler).
+function diceMarker(dice, rollerId, swade, gm) {
     const entries = (dice || [])
         .filter(d => d.value >= 1 && d.value <= d.sides)
         .slice(0, 24)
@@ -77,7 +81,7 @@ function diceMarker(dice, rollerId, swade) {
     const by = /^[\w-]{1,64}$/.test(rollerId || '') ? `;by=${rollerId}` : '';
     const sw = swade === undefined ? ''
         : `;sw=${typeof swade === 'number' ? (swade > 0 ? `r${Math.min(swade, 9)}` : 'ok') : swade}`;
-    return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw})`;
+    return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw}${gm ? ';gm=1' : ''})`;
 }
 
 // Anzeigenamen der Würfelnden, 10 Minuten zwischengespeichert
@@ -114,18 +118,33 @@ async function deleteCommand(message) {
     }
 }
 
-async function reply(message, { text, dice, swade }) {
-    // Wird der Befehl gelöscht, nennt die Antwort den Würfelnden statt auf den Befehl zu antworten
-    const name = deleteCommands ? await displayName(message.sender) : null;
+/**
+ * Antwort auf einen Befehl. `thread` leitet die Antwort in einen anderen Thread um
+ * (Würfel-Sammelthread); `gm` markiert den Wurf als GM-Wurf.
+ */
+async function reply(message, { text, dice, swade }, { thread = null, gm = false } = {}) {
+    const elsewhere = thread && thread !== message.threadRootEventId;
+    // Wird der Befehl gelöscht oder umgeleitet, nennt die Antwort den Würfelnden
+    const name = deleteCommands || elsewhere ? await displayName(message.sender) : null;
     // Bot-Antworten sollen niemanden anpingen
     let body = (name ? `**${escapeMarkdown(name)}** ` : '') + text.replace(/@/g, '\\@');
-    if (dice3d) body += diceMarker(dice, message.sender, swade);
-    await rpc('chatto.api.v1.MessageService', 'CreateMessage', {
-        roomId: message.roomId,
-        body,
-        threadRootEventId: message.threadRootEventId || undefined,
-        inReplyTo: deleteCommands ? undefined : message.eventId
+    if (dice3d) body += diceMarker(dice, message.sender, swade, gm);
+    const post = (threadRootEventId, inReplyTo) => rpc('chatto.api.v1.MessageService', 'CreateMessage', {
+        roomId: message.roomId, body, threadRootEventId, inReplyTo
     });
+    const inReplyTo = deleteCommands || elsewhere ? undefined : message.eventId;
+    if (elsewhere) {
+        try {
+            await post(thread, undefined);
+        } catch (error) {
+            // Sammelthread weg (gelöscht?) – vergessen und normal antworten
+            console.warn(`⚠️  Würfel-Thread ${thread} nicht erreichbar, antworte im Raum:`, error.message);
+            await setRoomDiceThread(message.roomId, null);
+            await post(message.threadRootEventId || undefined, inReplyTo);
+        }
+    } else {
+        await post(message.threadRootEventId || undefined, inReplyTo);
+    }
     if (deleteCommands) await deleteCommand(message);
 }
 
@@ -146,7 +165,11 @@ async function handleCommand(message) {
     switch (command) {
         case 'roll':
         case 'r':
-            return reply(message, roll(args, { system, gm, macros }));
+            return reply(message, roll(args, { system, gm, macros }), { thread: roomDiceThread(roomId), gm });
+
+        case 'dice':
+        case 'würfel':
+            return diceThread(message, args, send);
 
         case 'ini':
         case 'init':
@@ -181,6 +204,23 @@ async function handleCommand(message) {
             // Unbekannter Command – Hilfe anzeigen
             if (command) return send(helpText(system));
     }
+}
+
+// Würfel-Sammelthread: `!dice` in einem Thread macht ihn zum Ziel aller Würfe des Raums
+async function diceThread(message, args, send) {
+    const sub = args[0]?.toLowerCase();
+    if (sub === 'aus' || sub === 'off') {
+        await setRoomDiceThread(message.roomId, null);
+        return send('🎲 Würfel-Thread beendet – Würfe landen wieder direkt im Raum.');
+    }
+    if (!message.threadRootEventId) {
+        const current = roomDiceThread(message.roomId);
+        return send(current
+            ? '🎲 Für diesen Raum ist ein Würfel-Thread aktiv. Neue Session: Thread starten und dort `!dice` schreiben; beenden mit `!dice aus`.'
+            : '🎲 Starte einen Thread (z. B. „Würfe – Session 12“) und schreib dort `!dice`. Ab dann landen alle Würfe des Raums in diesem Thread.');
+    }
+    await setRoomDiceThread(message.roomId, message.threadRootEventId);
+    return send('🎲 **Würfel-Thread für diese Session.** Alle Würfe aus dem Raum landen ab jetzt hier; beenden mit `!dice aus`.');
 }
 
 // Savage-Worlds-Initiative (Aktionsdeck pro Raum)

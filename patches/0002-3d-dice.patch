@@ -21,12 +21,12 @@ per device in Settings → Appearance (off by default with reduced motion).
  apps/frontend/src/lib/dice/dice.svelte.ts     | 121 +++
  apps/frontend/src/lib/dice/diceGeometry.ts    | 272 +++++++
  apps/frontend/src/lib/dice/diceRenderer.ts    | 696 ++++++++++++++++++
- apps/frontend/src/lib/dice/diceSpec.ts        | 101 +++
+ apps/frontend/src/lib/dice/diceSpec.ts        | 114 +++
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
  apps/frontend/src/lib/markdown.ts             |  31 +
  apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   9 +
  .../[roomId]/ConversationPane.svelte          |   9 +
- 11 files changed, 1338 insertions(+)
+ 11 files changed, 1351 insertions(+)
  create mode 100644 apps/frontend/messages/de-DE/dice.json
  create mode 100644 apps/frontend/messages/en-GB/dice.json
  create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
@@ -1278,10 +1278,10 @@ index 000000000..747bd4a19
 +}
 diff --git a/apps/frontend/src/lib/dice/diceSpec.ts b/apps/frontend/src/lib/dice/diceSpec.ts
 new file mode 100644
-index 000000000..4646daaec
+index 000000000..9eacd6992
 --- /dev/null
 +++ b/apps/frontend/src/lib/dice/diceSpec.ts
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,114 @@
 +/**
 + * Dice roll markers in message bodies.
 + *
@@ -1294,7 +1294,9 @@ index 000000000..4646daaec
 + * example `hope.12.7,fear.12.3,adv.6.4`, optionally followed by parameters:
 + * `;by=<userId>` names who rolled (the bot posts the message, so its author is
 + * the bot), `;sw=<outcome>` is the Savage Worlds result of a trait roll
-+ * (`cf` critical failure, `fail`, `ok`, `r<n>` success with n raises).
++ * (`cf` critical failure, `fail`, `ok`, `r<n>` success with n raises), and
++ * `;gm=1` marks a roll made in the bot's GM mode. Other `;<name>=<value>`
++ * parameters are ignored, so bots can add parameters without breaking rolls.
 + */
 +
 +export const DICE_MARKER_PREFIX = '#chatto-dice:';
@@ -1326,7 +1328,7 @@ index 000000000..4646daaec
 +
 +const ENTRY = /^([a-z]+)\.(\d{1,3})\.(\d{1,3})$/;
 +const PAYLOAD =
-+  /^([a-z]+\.\d+\.\d+(?:,[a-z]+\.\d+\.\d+){0,63})((?:;by=[\w-]{1,64}|;sw=(?:cf|fail|ok|r\d))*)$/;
++  /^([a-z]+\.\d+\.\d+(?:,[a-z]+\.\d+\.\d+){0,63})((?:;by=[\w-]{1,64}|;sw=(?:cf|fail|ok|r\d)|;[a-z]{1,8}=[\w-]{1,32})*)$/;
 +const MARKER_IN_BODY = /\]\(#chatto-dice:([^)\s]{1,700})\)/;
 +
 +/** Parse a dice list; returns null when it is malformed or contains no showable die. */
@@ -1355,7 +1357,13 @@ index 000000000..4646daaec
 +  return PAYLOAD.test(payload) ? payload : null;
 +}
 +
-+export type DiceRoll = { dice: DieSpec[]; rollerId: string | null; swade: SwadeOutcome | null };
++export type DiceRoll = {
++  dice: DieSpec[];
++  rollerId: string | null;
++  swade: SwadeOutcome | null;
++  /** The roll was made in the dice bot's GM mode. */
++  gm: boolean;
++};
 +
 +function swadeOutcome(value: string | undefined): SwadeOutcome | null {
 +  if (value === 'cf' || value === 'fail') return value;
@@ -1374,7 +1382,12 @@ index 000000000..4646daaec
 +      .filter(Boolean)
 +      .map((param) => param.split('=') as [string, string])
 +  );
-+  return { dice, rollerId: params.get('by') ?? null, swade: swadeOutcome(params.get('sw')) };
++  return {
++    dice,
++    rollerId: params.get('by') ?? null,
++    swade: swadeOutcome(params.get('sw')),
++    gm: params.get('gm') === '1'
++  };
 +}
 +
 +/** The roll of the first marker in a raw markdown body. */
@@ -1499,5 +1512,5 @@ index eade13e41..e7facbb2d 100644
      const actorId = projectionEvent.event?.actorId;
      if (actorId) typingIndicator.removeTypingUser(actorId);
 -- 
-2.47.3
+2.56.0
 

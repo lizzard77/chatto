@@ -47,3 +47,11 @@ export function setRoomSystem(roomId, system) {
     state.rooms[roomId] = { ...state.rooms[roomId], system };
     return save();
 }
+
+/** Sammelthread für Würfe in diesem Raum (Thread-Root-Event-ID), gesetzt mit `!dice` im Thread. */
+export const roomDiceThread = (roomId) => state.rooms[roomId]?.diceThread ?? null;
+
+export function setRoomDiceThread(roomId, diceThread) {
+    state.rooms[roomId] = { ...state.rooms[roomId], diceThread: diceThread ?? undefined };
+    return save();
+}

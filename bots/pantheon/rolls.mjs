@@ -281,6 +281,7 @@ export function helpText(system) {
         '**Modus und System**',
         '`!system dh` / `!system swade` / `!system raw` → System für diesen Raum umschalten (`!system` zeigt es an)',
         '`!gm` (oder `!dm`) → GM-Modus, `!player` → zurück, `!mode` → aktueller Modus',
+        '`!dice` in einem Thread → Würfel-Thread der Session: alle Würfe des Raums landen dort, `!dice aus` beendet ihn',
         '`!help` → diese Hilfe',
         '',
         'In allen Systemen: `!roll 2d6+3` (oder `2w6+3`), `!roll 4d6kh3` → freie Würfelnotation, auch Makros wie `!roll fireball`'
