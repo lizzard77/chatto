@@ -122,13 +122,20 @@ async function deleteCommand(message) {
  * Antwort auf einen Befehl. `thread` leitet die Antwort in einen anderen Thread um
  * (Würfel-Sammelthread); `gm` markiert den Wurf als GM-Wurf.
  */
-async function reply(message, { text, dice, swade }, { thread = null, gm = false } = {}) {
+// Würfel-Antworten ohne Würfel (Fehler, Hinweise) bekommen einen unsichtbaren Marker
+// (Linktext ist ein Nullbreite-Leerzeichen): die Würfel-Leiste des Forks zeigt sie dem Würfelnden.
+function noteMarker(rollerId) {
+    return /^[\w-]{1,64}$/.test(rollerId || '') ? ` [\u200b](#chatto-dice-note:by=${rollerId})` : '';
+}
+
+async function reply(message, { text, dice, swade }, { thread = null, gm = false, note = false } = {}) {
     const elsewhere = thread && thread !== message.threadRootEventId;
     // Wird der Befehl gelöscht oder umgeleitet, nennt die Antwort den Würfelnden
     const name = deleteCommands || elsewhere ? await displayName(message.sender) : null;
     // Bot-Antworten sollen niemanden anpingen
     let body = (name ? `**${escapeMarkdown(name)}** ` : '') + text.replace(/@/g, '\\@');
     if (dice3d) body += diceMarker(dice, message.sender, swade, gm);
+    if (note && !dice?.length) body += noteMarker(message.sender);
     const post = (threadRootEventId, inReplyTo) => rpc('chatto.api.v1.MessageService', 'CreateMessage', {
         roomId: message.roomId, body, threadRootEventId, inReplyTo
     });
@@ -165,7 +172,7 @@ async function handleCommand(message) {
     switch (command) {
         case 'roll':
         case 'r':
-            return reply(message, roll(args, { system, gm, macros }), { thread: roomDiceThread(roomId), gm });
+            return reply(message, roll(args, { system, gm, macros }), { thread: roomDiceThread(roomId), gm, note: true });
 
         case 'dice':
         case 'würfel':

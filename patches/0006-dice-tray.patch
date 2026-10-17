@@ -16,12 +16,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  apps/frontend/messages/en-GB/composer.json    |  18 ++
  .../composer/ComposerDiceTray.svelte          | 193 ++++++++++++++++++
  .../composer/ComposerToolbar.svelte           |   8 +-
- .../src/lib/diceTray/DiceTrayResults.svelte   |  97 +++++++++
+ .../src/lib/diceTray/DiceTrayResults.svelte   | 110 ++++++++++
  apps/frontend/src/lib/diceTray/DieIcon.svelte |  47 +++++
- .../src/lib/diceTray/diceTray.svelte.spec.ts  |  63 ++++++
- .../src/lib/diceTray/diceTray.svelte.ts       | 166 +++++++++++++++
+ .../src/lib/diceTray/diceTray.svelte.spec.ts  |  90 ++++++++
+ .../src/lib/diceTray/diceTray.svelte.ts       | 188 +++++++++++++++++
  .../[roomId]/ConversationPane.svelte          |   4 +
- 9 files changed, 613 insertions(+), 1 deletion(-)
+ 9 files changed, 675 insertions(+), 1 deletion(-)
  create mode 100644 apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DieIcon.svelte
@@ -320,10 +320,10 @@ index c5ae3ef79..e74a7a2e3 100644
  
 diff --git a/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte b/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
 new file mode 100644
-index 000000000..aaa959863
+index 000000000..a14042823
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,110 @@
 +<!--
 +@component
 +
@@ -350,9 +350,16 @@ index 000000000..aaa959863
 +  const rolls = $derived(tray.rolls(roomId));
 +  const gm = $derived(tray.viewerIsGm);
 +  const shown = $derived(gm ? rolls.latestPerRoller : rolls.latest ? [rolls.latest] : []);
-+  // Hidden until a newer roll arrives.
++  // The viewer's own error or hint, while no newer roll replaced it.
++  const note = $derived.by(() => {
++    const latestNote = rolls.latestNote(stores.accountId);
++    if (!latestNote) return null;
++    return shown.length === 0 || latestNote.createdAtMs > shown[0].createdAtMs ? latestNote : null;
++  });
++  const newestId = $derived(note?.eventId ?? shown[0]?.eventId ?? null);
++  // Hidden until a newer result arrives.
 +  let hiddenUntilAfter = $state<string | null>(null);
-+  const visible = $derived(shown.length > 0 && shown[0].eventId !== hiddenUntilAfter);
++  const visible = $derived(newestId !== null && newestId !== hiddenUntilAfter);
 +
 +  useProjectionEvent((update) => {
 +    const event = update.event;
@@ -361,7 +368,8 @@ index 000000000..aaa959863
 +    const posted = semantic.value;
 +    if (posted.roomId !== roomId || posted.echoOfEventId) return;
 +    const body = posted.bodyPlaintext;
-+    if (!body?.includes('#chatto-dice:')) return;
++    // Covers dice markers (`#chatto-dice:`) and notes (`#chatto-dice-note:`).
++    if (!body?.includes('#chatto-dice')) return;
 +    const roll = parseTrayRoll(event.id, body, event.createdAt?.toDate().getTime() ?? Date.now());
 +    if (!roll) return;
 +    tray.ingest(roomId, roll, posted.threadRootEventId || null, stores.accountId, { live: true });
@@ -399,6 +407,8 @@ index 000000000..aaa959863
 +      <span aria-hidden="true" class="iconify icon-[uil--dice-five] shrink-0 text-muted"></span>
 +      {#if gm}
 +        <span class="min-w-0 flex-1 font-medium">{m('composer.dice_tray.per_player')}</span>
++      {:else if note}
++        <span class="min-w-0 flex-1 truncate text-danger" title={note.text}>{note.text}</span>
 +      {:else}
 +        <span class="min-w-0 flex-1 truncate" title={shown[0].text}>{shown[0].text}</span>
 +      {/if}
@@ -407,13 +417,16 @@ index 000000000..aaa959863
 +        class="flex shrink-0 cursor-pointer items-center text-muted hover:text-text"
 +        aria-label={m('composer.dice_tray.hide')}
 +        title={m('composer.dice_tray.hide')}
-+        onclick={() => (hiddenUntilAfter = shown[0].eventId)}
++        onclick={() => (hiddenUntilAfter = newestId)}
 +      >
 +        <span aria-hidden="true" class="iconify icon-[uil--times]"></span>
 +      </button>
 +    </div>
 +    {#if gm}
 +      <ul class="mt-1 flex flex-col gap-0.5 ps-6">
++        {#if note}
++          <li class="truncate text-danger" title={note.text}>{note.text}</li>
++        {/if}
 +        {#each shown as roll (roll.rollerId)}
 +          <li class="truncate" title={roll.text}>{roll.text}</li>
 +        {/each}
@@ -476,10 +489,10 @@ index 000000000..e5a6c8b40
 +</svg>
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
 new file mode 100644
-index 000000000..864e36e84
+index 000000000..8e508ca72
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,90 @@
 +import { describe, expect, it } from 'vitest';
 +import { ServerDiceTray, dualityCommand, parseTrayRoll, rollCommand } from './diceTray.svelte';
 +
@@ -515,7 +528,21 @@ index 000000000..864e36e84
 +      rollerId: 'u_phil',
 +      gm: true,
 +      text: 'Phil 🎲 12 — 3d6+4: [2, 5, 1]+4 = 12',
-+      createdAtMs: 1000
++      createdAtMs: 1000,
++      note: false
++    });
++  });
++
++  it('reads an error note that only names the roller', () => {
++    const roll = parseTrayRoll(
++      'e2',
++      '**Phil** ❌ Zu viele Würfel: höchstens 999 auf einmal [\u200b](#chatto-dice-note:by=u_phil)',
++      2000
++    );
++    expect(roll).toMatchObject({
++      rollerId: 'u_phil',
++      note: true,
++      text: 'Phil ❌ Zu viele Würfel: höchstens 999 auf einmal'
 +    });
 +  });
 +
@@ -542,13 +569,26 @@ index 000000000..864e36e84
 +    expect(tray.diceThread('r')).toBe('t1');
 +    expect(new ServerDiceTray('srv').diceThread('r')).toBe('t1');
 +  });
++
++  it('keeps notes out of the latest rolls and shows them to their roller only', () => {
++    localStorage.clear();
++    const tray = new ServerDiceTray('srv2');
++    const note = parseTrayRoll('n', 'x ❌ [\u200b](#chatto-dice-note:by=u_bob)', 5)!;
++    tray.ingest('r', roll('a', 'u_alice', 1), 't', 'u_bob', { live: true });
++    tray.ingest('r', note, 't', 'u_bob', { live: true });
++
++    expect(tray.rolls('r').latest?.eventId).toBe('a');
++    expect(tray.rolls('r').latestPerRoller.map((r) => r.eventId)).toEqual(['a']);
++    expect(tray.rolls('r').latestNote('u_bob')?.eventId).toBe('n');
++    expect(tray.rolls('r').latestNote('u_alice')).toBeNull();
++  });
 +});
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 new file mode 100644
-index 000000000..ccab68c4d
+index 000000000..e07719e7d
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,188 @@
 +/**
 + * Dice tray: roll dice from the composer and show the latest dice bot results.
 + *
@@ -559,7 +599,10 @@ index 000000000..ccab68c4d
 + * per-session collection thread of the room, which `!dice` in a thread sets up.
 + *
 + * Players see the latest roll of the room. A viewer whose own latest roll was a
-+ * GM roll sees the latest roll per player instead. All state is device-local.
++ * GM roll sees the latest roll per player instead. A bot reply to a roll command
++ * without dice, such as an error, carries an invisible note marker
++ * `[\u200b](#chatto-dice-note:by=<userId>)`; only the roller sees it in the tray.
++ * All state is device-local.
 + */
 +
 +import { Codecs, serverSlot, type StorageSlot } from '@chatto/client/storage/slot';
@@ -598,14 +641,19 @@ index 000000000..ccab68c4d
 +  /** Readable result without markup, for example `Phil 🎲 12 — 3d6+4: [2, 5, 1]+4 = 12`. */
 +  text: string;
 +  createdAtMs: number;
++  /** A reply without dice (an error or a hint) that only the roller sees. */
++  note: boolean;
 +};
 +
 +const MARKER = /\s*\[🎲\]\(#chatto-dice:([^)\s]{1,700})\)/g;
++const NOTE_MARKER = /\s*\[[^\]]{0,4}\]\(#chatto-dice-note:([^)\s]{1,200})\)/g;
 +
 +/** Strip Markdown emphasis and escapes so the result fits in one line of plain text. */
 +function plainText(markdown: string): string {
 +  return markdown
 +    .replace(MARKER, '')
++    .replace(NOTE_MARKER, '')
++    .replace(/\u200b/g, '')
 +    .replace(/(\*\*|__|~~|`)/g, '')
 +    .replace(/\\([\\`*_~[\]()#>|@])/g, '$1')
 +    .replace(/\s+/g, ' ')
@@ -614,17 +662,25 @@ index 000000000..ccab68c4d
 +
 +/** A dice bot result from a message body, or null when the body has no marker with `by`. */
 +export function parseTrayRoll(eventId: string, body: string, createdAtMs: number): TrayRoll | null {
-+  const payload = [...body.matchAll(MARKER)][0]?.[1];
-+  if (!payload) return null;
++  const dicePayload = [...body.matchAll(MARKER)][0]?.[1];
++  const notePayload = dicePayload ? undefined : [...body.matchAll(NOTE_MARKER)][0]?.[1];
++  if (!dicePayload && !notePayload) return null;
++  // The dice payload starts with the dice list; a note payload has parameters only.
 +  const params: Record<string, string> = Object.fromEntries(
-+    payload
-+      .split(';')
-+      .slice(1)
-+      .map((param) => param.split('='))
++    (dicePayload ? dicePayload.split(';').slice(1) : notePayload!.split(';')).map((param) =>
++      param.split('=')
++    )
 +  );
 +  const rollerId = params.by;
 +  if (!rollerId) return null;
-+  return { eventId, rollerId, gm: params.gm === '1', text: plainText(body), createdAtMs };
++  return {
++    eventId,
++    rollerId,
++    gm: params.gm === '1',
++    text: plainText(body),
++    createdAtMs,
++    note: !dicePayload
++  };
 +}
 +
 +const MAX_ROLLS = 200;
@@ -640,13 +696,19 @@ index 000000000..ccab68c4d
 +  }
 +
 +  get latest(): TrayRoll | null {
-+    return this.rolls.at(-1) ?? null;
++    return this.rolls.findLast((roll) => !roll.note) ?? null;
++  }
++
++  /** The latest note (error or hint) for a roller, if any. */
++  latestNote(rollerId: string | null): TrayRoll | null {
++    if (!rollerId) return null;
++    return this.rolls.findLast((roll) => roll.note && roll.rollerId === rollerId) ?? null;
 +  }
 +
 +  /** The latest roll of each roller, newest first. */
 +  get latestPerRoller(): TrayRoll[] {
 +    const byRoller: Record<string, TrayRoll> = {};
-+    for (const roll of this.rolls) byRoller[roll.rollerId] = roll;
++    for (const roll of this.rolls) if (!roll.note) byRoller[roll.rollerId] = roll;
 +    return Object.values(byRoller).sort((a, b) => b.createdAtMs - a.createdAtMs);
 +  }
 +}

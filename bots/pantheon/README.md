@@ -50,6 +50,8 @@ Ab dann landen alle Würfe (`!r …`, auch getippt im Kanal oder über den 🎲-
 Patch 0006) in diesem Thread; der Befehl verschwindet, die Antwort nennt den Würfelnden.
 `!dice aus` beendet das. Ist der Thread gelöscht, antwortet der Bot wieder im Raum.
 Würfe im GM-Modus tragen `;gm=1` im Marker; daran erkennt die Würfel-Leiste die SL-Ansicht.
+Fehler und Hinweise auf Würfelbefehle (z. B. „Zu viele Würfel“) tragen einen unsichtbaren
+Marker `[\u200b](#chatto-dice-note:by=<userId>)`; die Würfel-Leiste zeigt sie dem Würfelnden.
 
 **Aufgeräumter Kanal:** Pantheon löscht die Befehlsnachricht (`!r 2d6`) nach seiner Antwort und
 schreibt stattdessen den Namen des Würfelnden vor das Ergebnis (`**Phil** 🎲 **9** — 2d6: …`). Dafür

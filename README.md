@@ -156,6 +156,10 @@ The only coupling between a dice bot and the renderer is this text format in the
   failure), `fail`, `ok` (success), `r1`…`r9` (success with raises). Parameters may come in any order.
 - `;gm=1` (optional): the roll was made in the bot's GM mode (the dice tray shows GMs the latest roll
   per player). Other `;<name>=<value>` parameters are ignored, so bots can add parameters safely.
+
+A reply to a roll command without dice (an error such as "too many dice", or a hint) carries an
+invisible note marker instead: `[\u200b](#chatto-dice-note:by=<userId>)` (the link text is a
+zero-width space, so no client shows it). The dice tray (0006) shows such a note to the roller only.
 - `kind`: `hope`, `fear` (Daggerheart duality dice, gold/violet and labelled; together they produce
   the "with Hope / with Fear / Critical success" banner), `adv`/`dis` (d6 advantage/disadvantage),
   `gm` (GM's die), `wild` (Savage Worlds Wild Die, orange and labelled), `std`, `drop` (discarded die,
