@@ -53,27 +53,42 @@ function sendControl(path, command) {
     });
 }
 
-// "node erato.mjs ctl [-c <channel>] …" schickt einen Befehl an ein laufendes Erato
-async function control(args) {
-    let channel;
-    if (args[0] === '-c') [, channel, ...args] = args;
-    channel = channel?.replace(/^#/, '');
-    const sockets = [];
+// Alle auf diesem PC laufenden Erato (je Channel ein Steuer-Socket)
+async function listInstances() {
+    const instances = [];
     for (const file of readdirSync(controlDir)) {
         const id = file.match(/^erato-(.+)\.sock$/)?.[1];
         if (!id) continue;
         const name = await sendControl(controlPath(id), 'name').catch(() => null);
-        if (name !== null) sockets.push({ id, name: name.trim() });
+        if (name !== null) instances.push({ id, name: name.trim() });
     }
-    const matches = channel
-        ? sockets.filter(s => s.id === channel || s.name.toLowerCase() === channel.toLowerCase())
-        : sockets;
+    return instances.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// "[-c <channel>] <befehl>" zerlegen (Konsole von außen und Chatto-DM)
+function parseTarget(args) {
+    let channel;
+    if (args[0] === '-c') [, channel, ...args] = args;
+    return { channel: channel?.replace(/^#/, ''), command: args.join(' ') };
+}
+
+function matchInstances(instances, channel) {
+    return channel
+        ? instances.filter(s => s.id === channel || s.name.toLowerCase() === channel.toLowerCase())
+        : instances;
+}
+
+// "node erato.mjs ctl [-c <channel>] …" schickt einen Befehl an ein laufendes Erato
+async function control(args) {
+    const { channel, command } = parseTarget(args);
+    const instances = await listInstances();
+    const matches = matchInstances(instances, channel);
     if (matches.length !== 1) {
         console.error(matches.length ? 'Mehrere Erato laufen, Channel mit -c angeben:' : 'Kein passendes Erato läuft.');
-        for (const s of sockets) console.error(`  ${s.id}  #${s.name}`);
+        for (const s of instances) console.error(`  ${s.id}  #${s.name}`);
         return 1;
     }
-    process.stdout.write(await sendControl(controlPath(matches[0].id), args.join(' ') || 'status'));
+    process.stdout.write(await sendControl(controlPath(matches[0].id), command || 'status'));
     return 0;
 }
 
@@ -106,6 +121,9 @@ const videoCodec = VideoCodec[(process.env.ERATO_VIDEO_CODEC || 'vp8').toUpperCa
 // Als Bildschirmfreigabe zeigt Chatto das Bild eingepasst (schwarze Balken), Kamerabilder
 // werden in der großen Ansicht auf die Kachel zugeschnitten
 const videoAsCamera = process.env.ERATO_VIDEO_AS === 'camera';
+// Steuerung per Chatto-DM: Logins, die Erato Befehle schicken dürfen (sonst aus)
+const dmUsers = (process.env.ERATO_DM_USERS || '').split(',').map(s => s.trim().replace(/^@/, '')).filter(Boolean);
+const dmPollMs = Number(process.env.ERATO_DM_POLL_MS || 2000);
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -359,6 +377,92 @@ function startConsole() {
 }
 
 // ---------------------------------------------------------------------------
+// Steuerung per Chatto-DM (Abfrage alle ERATO_DM_POLL_MS, kein Realtime/Protobuf)
+// ---------------------------------------------------------------------------
+
+let dmTimer;
+const dmCursors = new Map(); // roomId → Cursor hinter dem neuesten gesehenen Ereignis
+let dmRoomsCheckedAt = 0;
+let dmAllowed = new Set();
+
+async function startDmControl(botUserId) {
+    if (!dmUsers.length) return;
+    for (const login of dmUsers) {
+        try {
+            const { user } = await rpc('UserService', 'GetUser', { login });
+            const id = user?.user?.id;
+            if (id) dmAllowed.add(id);
+            else console.warn(`ERATO_DM_USERS: ${login} hat keine ID`);
+        } catch (error) {
+            console.warn(`ERATO_DM_USERS: ${login} nicht gefunden (${error.code || error.message})`);
+        }
+    }
+    if (!dmAllowed.size) return;
+    console.log(`   Steuerung per DM: ${dmUsers.join(', ')}`);
+    let lastError = '';
+    const poll = async () => {
+        try {
+            await pollDms(botUserId);
+            lastError = '';
+        } catch (error) {
+            // Nur bei neuem Fehler melden, nicht alle paar Sekunden dasselbe
+            if (error.message !== lastError) console.warn(`DM-Abfrage: ${error.message}`);
+            if (error.code === 'permission_denied' && error.message !== lastError) {
+                console.warn('   Bot braucht im Bereich „Direct messages“ message.read und message.post (Server Admin → Bots)');
+            }
+            lastError = error.message;
+        }
+        if (!shuttingDown) dmTimer = setTimeout(poll, dmPollMs);
+    };
+    await poll();
+}
+
+async function pollDms(botUserId) {
+    // Neue DMs (jemand schreibt Erato zum ersten Mal) alle 30 s nachladen
+    if (Date.now() - dmRoomsCheckedAt > 30_000) {
+        dmRoomsCheckedAt = Date.now();
+        const { rooms = [] } = await rpc('RoomDirectoryService', 'ListRooms', {
+            scope: 'ROOM_DIRECTORY_SCOPE_DMS', page: { limit: 100 }
+        });
+        for (const { room } of rooms) {
+            if (dmCursors.has(room.id)) continue;
+            // Ältere Nachrichten nicht als Befehle ausführen: beim neuesten Ereignis einsteigen
+            const { page } = await rpc('RoomService', 'GetRoomEvents', { roomId: room.id, limit: 1 });
+            dmCursors.set(room.id, page?.endCursor || '');
+        }
+    }
+    for (const [dmRoomId, cursor] of dmCursors) {
+        const { page } = await rpc('RoomService', 'GetRoomEvents',
+            cursor ? { roomId: dmRoomId, limit: 50, after: cursor } : { roomId: dmRoomId, limit: 50 });
+        if (page?.endCursor) dmCursors.set(dmRoomId, page.endCursor);
+        for (const event of page?.events || []) {
+            const message = event.messagePosted?.message;
+            if (!message?.body || event.actorId === botUserId || !dmAllowed.has(event.actorId)) continue;
+            await handleDm(dmRoomId, message.body);
+        }
+    }
+}
+
+// Mehrere Erato auf diesem PC teilen sich den Bot und sehen dieselbe DM:
+// mit -c antwortet nur der passende, ohne -c bei mehreren nur einer mit der Liste
+async function handleDm(dmRoomId, body) {
+    const { channel, command } = parseTarget(body.trim().replace(/^!/, '').split(/\s+/));
+    const instances = await listInstances();
+    const matches = matchInstances(instances, channel);
+    let reply;
+    if (matches.length === 1) {
+        if (matches[0].id !== roomId) return;
+        reply = await handleCommand(command || 'status').catch((error) => `Fehler: ${error.message}`);
+        if (instances.length > 1) reply = `**#${roomName}:** ${reply}`;
+    } else {
+        if (instances[0]?.id !== roomId) return;
+        reply = (matches.length ? 'Mehrere Erato laufen, Channel mit `-c <channel>` angeben:' : 'Kein passendes Erato läuft:')
+            + '\n' + instances.map(s => `- #${s.name}`).join('\n');
+    }
+    if (reply) await rpc('MessageService', 'CreateMessage', { roomId: dmRoomId, body: reply });
+}
+
+// ---------------------------------------------------------------------------
 // Channel-Auswahl
 // ---------------------------------------------------------------------------
 
@@ -426,6 +530,7 @@ async function shutdown(code = 0) {
     shuttingDown = true;
     console.log('\n🛑 Beende Erato...');
     ffmpeg?.kill();
+    clearTimeout(dmTimer);
     share?.capture?.kill();
     controlServer?.close();
     teardownVirtualSink();
@@ -495,6 +600,7 @@ async function main() {
     console.log(`   ${HELP}`);
 
     startConsole();
+    startDmControl(viewer.user?.profile?.id).catch((error) => console.warn(`DM-Steuerung: ${error.message}`));
 
     await pump(ffmpeg, source);
 }

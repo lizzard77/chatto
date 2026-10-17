@@ -26,6 +26,8 @@ he1), weil Musik und Fenster vom eigenen Rechner kommen.
 2. Auf der Detailseite des Bots für die gewünschten Channels erlauben: `room.join`, `call.join`,
    `call.start`, `call.voice`, für die Fensterfreigabe `call.screenshare`. Danach in der
    **Joined**-Zeile die Channels anhaken (oder Erato tritt beim Start selbst bei).
+   Für die Steuerung per DM zusätzlich in der Spalte **Direct messages** `message.read` und
+   `message.post` erlauben.
 3. `cp .env.example .env`, `CHATTO_API_KEY` eintragen.
 4. `npm i`, dann `npm start` oder `node erato.mjs` (benötigt `ffmpeg` und `pactl`). Die `.env` neben
    `erato.mjs` wird immer geladen, auch aus einem anderen Verzeichnis; Shell-Variablen haben Vorrang. Beenden mit Ctrl+C.
@@ -44,6 +46,11 @@ quit           # Erato beenden
 node erato.mjs ctl share                     # dasselbe von außen (z. B. als KDE-Kurzbefehl)
 node erato.mjs ctl -c "Game - London 1888" stop   # nötig, wenn mehrere Erato laufen
 ```
+
+**Per Chatto-DM:** Mit `ERATO_DM_USERS=phil` (Logins, kommagetrennt) nimmt Erato dieselben Befehle
+als Direktnachricht an (`share`, `stop`, `status`, `quit`, bei mehreren Erato auf dem PC mit
+`-c <channel>` davor) und antwortet dort. Andere Absender werden ignoriert. Erato fragt seine DMs alle
+`ERATO_DM_POLL_MS` (Standard 2000) ab und führt nur Nachrichten aus, die nach seinem Start kommen.
 
 Das Fenster wird in `ERATO_VIDEO_SIZE` (Standard 1920×1080) eingepasst, schwarze Ränder bei anderem
 Seitenverhältnis; Mauszeiger ist sichtbar. Erato sendet es als Bildschirmfreigabe (braucht
