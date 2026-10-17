@@ -13,6 +13,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@livekit/rtc-node": "^1.1.0"
+    "@livekit/rtc-node": "^1.1.0",
+    "dbus-next": "^0.10.2"
   }
 }
