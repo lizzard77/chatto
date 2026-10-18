@@ -127,7 +127,9 @@ Each patch applies on its own and in any order (the image build uses plain `git 
 
 - `0006-dice-tray.patch` – dice tray. A 🎲 button next to the attachment button in the composer
   opens a flyout: pick d4–d100 (right-click removes a die), a modifier, then **Roll**, or
-  **Duality dice** for Daggerheart. The tray posts a plain `!r 2d6+1` for the dice bot, into the
+  **2d12** (duality dice) in the die grid – shown only while the room's system is Daggerheart, as
+  the bot last reported it (`;sys=` or the system marker; `dh` before any report). The trash
+  button clears the pick. The tray posts a plain `!r 2d6+1` for the dice bot, into the
   room's dice thread once it knows it. A small card above the room composer shows the latest
   result; a viewer whose own latest roll was a GM roll (`;gm=1` in the dice marker) sees the
   latest result per player instead. The card follows live events, thread replies included, and
@@ -155,11 +157,15 @@ The only coupling between a dice bot and the renderer is this text format in the
 - `;sw=<outcome>` (optional): result of a Savage Worlds trait roll, shown as a banner: `cf` (critical
   failure), `fail`, `ok` (success), `r1`…`r9` (success with raises). Parameters may come in any order.
 - `;gm=1` (optional): the roll was made in the bot's GM mode (the dice tray shows GMs the latest roll
-  per player). Other `;<name>=<value>` parameters are ignored, so bots can add parameters safely.
+  per player).
+- `;sys=<system>` (optional): the bot's dice system of the room, `dh`, `swade` or `raw`; the dice tray
+  offers the duality roll only for `dh`. Other `;<name>=<value>` parameters are ignored, so bots can add parameters safely.
 
 A reply to a roll command without dice (an error such as "too many dice", or a hint) carries an
 invisible note marker instead: `[\u200b](#chatto-dice-note:by=<userId>)` (the link text is a
-zero-width space, so no client shows it). The dice tray (0006) shows such a note to the roller only.
+zero-width space, so no client shows it; it may carry `;sys=` too). The dice tray (0006) shows such a
+note to the roller only. A reply to the bot's system command carries
+`[\u200b](#chatto-dice-system:<system>)`, so the tray learns a system change before the next roll.
 - `kind`: `hope`, `fear` (Daggerheart duality dice, gold/violet and labelled; together they produce
   the "with Hope / with Fear / Critical success" banner), `adv`/`dis` (d6 advantage/disadvantage),
   `gm` (GM's die), `wild` (Savage Worlds Wild Die, orange and labelled), `std`, `drop` (discarded die,

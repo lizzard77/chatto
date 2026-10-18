@@ -71,8 +71,9 @@ async function rpc(service, method, body = {}) {
 // andere sehen einen harmlosen 🎲-Link. Format: README des Forks (Würfel-Marker).
 // `;by=` nennt den Würfelnden (Autor der Nachricht ist ja der Bot), für „nur meine Würfe“;
 // `;sw=` ist das Ergebnis eines Savage-Worlds-Eigenschaftswurfs für das Banner;
-// `;gm=1` markiert Würfe im GM-Modus (die Würfel-Leiste zeigt GMs den letzten Wurf pro Spieler).
-function diceMarker(dice, rollerId, swade, gm) {
+// `;gm=1` markiert Würfe im GM-Modus (die Würfel-Leiste zeigt GMs den letzten Wurf pro Spieler);
+// `;sys=` nennt das System des Raums (die Würfel-Leiste zeigt den Dualitätswurf nur bei `dh`).
+function diceMarker(dice, rollerId, swade, gm, system) {
     const entries = (dice || [])
         .filter(d => d.value >= 1 && d.value <= d.sides)
         .slice(0, 24)
@@ -81,7 +82,14 @@ function diceMarker(dice, rollerId, swade, gm) {
     const by = /^[\w-]{1,64}$/.test(rollerId || '') ? `;by=${rollerId}` : '';
     const sw = swade === undefined ? ''
         : `;sw=${typeof swade === 'number' ? (swade > 0 ? `r${Math.min(swade, 9)}` : 'ok') : swade}`;
-    return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw}${gm ? ';gm=1' : ''})`;
+    return ` [🎲](#chatto-dice:${entries.join(',')}${by}${sw}${gm ? ';gm=1' : ''}${sysParam(system)})`;
+}
+
+const sysParam = (system) => /^\w{1,16}$/.test(system || '') ? `;sys=${system}` : '';
+
+// Unsichtbarer Marker mit dem System des Raums, für Antworten auf `!system`
+function systemMarker(system) {
+    return /^\w{1,16}$/.test(system || '') ? ` [\u200b](#chatto-dice-system:${system})` : '';
 }
 
 // Anzeigenamen der Würfelnden, 10 Minuten zwischengespeichert
@@ -124,18 +132,18 @@ async function deleteCommand(message) {
  */
 // Würfel-Antworten ohne Würfel (Fehler, Hinweise) bekommen einen unsichtbaren Marker
 // (Linktext ist ein Nullbreite-Leerzeichen): die Würfel-Leiste des Forks zeigt sie dem Würfelnden.
-function noteMarker(rollerId) {
-    return /^[\w-]{1,64}$/.test(rollerId || '') ? ` [\u200b](#chatto-dice-note:by=${rollerId})` : '';
+function noteMarker(rollerId, system) {
+    return /^[\w-]{1,64}$/.test(rollerId || '') ? ` [\u200b](#chatto-dice-note:by=${rollerId}${sysParam(system)})` : '';
 }
 
-async function reply(message, { text, dice, swade }, { thread = null, gm = false, note = false } = {}) {
+async function reply(message, { text, dice, swade }, { thread = null, gm = false, note = false, system = null } = {}) {
     const elsewhere = thread && thread !== message.threadRootEventId;
     // Wird der Befehl gelöscht oder umgeleitet, nennt die Antwort den Würfelnden
     const name = deleteCommands || elsewhere ? await displayName(message.sender) : null;
     // Bot-Antworten sollen niemanden anpingen
     let body = (name ? `**${escapeMarkdown(name)}** ` : '') + text.replace(/@/g, '\\@');
-    if (dice3d) body += diceMarker(dice, message.sender, swade, gm);
-    if (note && !dice?.length) body += noteMarker(message.sender);
+    if (dice3d) body += diceMarker(dice, message.sender, swade, gm, system);
+    if (note && !dice?.length) body += noteMarker(message.sender, system);
     const post = (threadRootEventId, inReplyTo) => rpc('chatto.api.v1.MessageService', 'CreateMessage', {
         roomId: message.roomId, body, threadRootEventId, inReplyTo
     });
@@ -172,7 +180,7 @@ async function handleCommand(message) {
     switch (command) {
         case 'roll':
         case 'r':
-            return reply(message, roll(args, { system, gm, macros }), { thread: roomDiceThread(roomId), gm, note: true });
+            return reply(message, roll(args, { system, gm, macros }), { thread: roomDiceThread(roomId), gm, note: true, system });
 
         case 'dice':
         case 'würfel':
@@ -185,10 +193,10 @@ async function handleCommand(message) {
 
         case 'system': {
             const wanted = args[0]?.toLowerCase();
-            if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\`, \`!system swade\` oder \`!system raw\`.`);
+            if (!wanted) return send(`System in diesem Raum: **${SYSTEMS[system]}**. Umschalten mit \`!system dh\`, \`!system swade\` oder \`!system raw\`.${systemMarker(system)}`);
             if (!SYSTEMS[wanted]) return send(`❌ Unbekanntes System \`${args[0]}\` — \`dh\` (Daggerheart), \`swade\` (Savage Worlds) oder \`raw\` (freies Würfeln)`);
             await setRoomSystem(roomId, wanted);
-            return send(`🎲 System in diesem Raum: **${SYSTEMS[wanted]}**\n${modeText(wanted, gm)}`);
+            return send(`🎲 System in diesem Raum: **${SYSTEMS[wanted]}**\n${modeText(wanted, gm)}${systemMarker(wanted)}`);
         }
 
         case 'gm':
