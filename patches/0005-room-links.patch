@@ -145,10 +145,10 @@ index 6cc038d06..9c96023b8 100644
    {:then html}
      <MarkdownHtml {html} />
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index e8b92ffa5..c35107163 100644
+index 6a08c1142..fa949bde5 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-@@ -25,6 +25,8 @@
+@@ -22,6 +22,8 @@
    import type { Component } from 'svelte';
    import EmojiAutocomplete from './EmojiAutocomplete.svelte';
    import MentionAutocomplete from './MentionAutocomplete.svelte';
@@ -157,7 +157,7 @@ index e8b92ffa5..c35107163 100644
    import ComposerLinkPreview from './ComposerLinkPreview.svelte';
    import ComposerAttachmentPreviews from './ComposerAttachmentPreviews.svelte';
    import ComposerFormattingToolbar from './ComposerFormattingToolbar.svelte';
-@@ -166,6 +168,10 @@
+@@ -170,6 +172,10 @@
      context: composerContext,
      getMembers: () => membersStore().members,
      getMentionPriorityUserIds: () => mentionPriorityUserIds,
@@ -168,7 +168,7 @@ index e8b92ffa5..c35107163 100644
      get membersStore() {
        return membersStore();
      },
-@@ -325,6 +331,15 @@
+@@ -323,6 +329,15 @@
              onClose={() => composer.autocomplete.closeMention()}
            />
          {/if}
@@ -415,7 +415,7 @@ index 61fc9e983..71034a19d 100644
    insertText: (text: string) => void;
    /** Toggle formatting or insert a footnote at the current selection. */
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 6b04d54f4..26bb63fde 100644
+index 0e3c1bb53..81b6fb3a4 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
@@ -427,7 +427,7 @@ index 6b04d54f4..26bb63fde 100644
  import { DraftState, draftKey } from './draft.svelte';
  import {
    emptyComposerIndentState,
-@@ -108,6 +108,8 @@ type MessageComposerDependencies = {
+@@ -112,6 +112,8 @@ type MessageComposerDependencies = {
    context: ComposerContext;
    getMembers: () => RoomMember[];
    getMentionPriorityUserIds: () => ReadonlySet<string> | undefined;
@@ -436,7 +436,7 @@ index 6b04d54f4..26bb63fde 100644
    membersStore: RoomMembersStore;
    mentionRolesStore: MentionRolesStore;
    serverInfo: ServerInfoState;
-@@ -171,7 +173,8 @@ export class MessageComposerState {
+@@ -179,7 +181,8 @@ export class MessageComposerState {
        () => this.editorApi,
        () => this.mentionCandidates,
        () => this.mentionRoles,
@@ -446,7 +446,7 @@ index 6b04d54f4..26bb63fde 100644
      );
      this.submission = new ComposerSubmissionState({
        getAPI: dependencies.getMessageAPI,
-@@ -368,6 +371,9 @@ export class MessageComposerState {
+@@ -382,6 +385,9 @@ export class MessageComposerState {
      if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
        return true;
      }
@@ -562,10 +562,10 @@ index 000000000..c3d353690
 +  });
 +});
 diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
-index 854597cd4..796060b24 100644
+index b49c545ac..3002d9d2f 100644
 --- a/apps/frontend/src/lib/i18n/catalogSections.js
 +++ b/apps/frontend/src/lib/i18n/catalogSections.js
-@@ -15,6 +15,7 @@ export const catalogSections = /** @type {const} */ ([
+@@ -16,6 +16,7 @@ export const catalogSections = /** @type {const} */ ([
    'quick_switcher',
    'rbac',
    'room',

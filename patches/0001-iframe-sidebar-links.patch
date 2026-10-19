@@ -15,10 +15,10 @@ Subject: [PATCH] Frontend: embed sidebar links in an iframe
  create mode 100644 apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 
 diff --git a/apps/frontend/messages/de-DE/admin.json b/apps/frontend/messages/de-DE/admin.json
-index 2d95ff57d..c9ccc9bc6 100644
+index e2adc0ded..0fde42db9 100644
 --- a/apps/frontend/messages/de-DE/admin.json
 +++ b/apps/frontend/messages/de-DE/admin.json
-@@ -321,7 +321,11 @@
+@@ -261,7 +261,11 @@
          "threading_title": "Thread-Modus",
          "threading_subtitle": "Lege fest, wie Unterhaltungen in diesem Raum Threads verwenden.",
          "threading_help": "Eine Änderung gilt nur für neue Nachrichten. Bestehende Threads bleiben unverändert. „Erforderlich“ passt zu Räumen, in denen jede Nachricht ein eigenes Thema ist, zum Beispiel Support-Anfragen. „Empfohlen“ hält belebte Räume übersichtlich, erzwingt aber keine Threads."
@@ -32,10 +32,10 @@ index 2d95ff57d..c9ccc9bc6 100644
      "security": {
        "title": "Sicherheit",
 diff --git a/apps/frontend/messages/en-GB/admin.json b/apps/frontend/messages/en-GB/admin.json
-index 1d5b48d9c..b0f22eb48 100644
+index 75d34e563..6c758b2bf 100644
 --- a/apps/frontend/messages/en-GB/admin.json
 +++ b/apps/frontend/messages/en-GB/admin.json
-@@ -321,7 +321,11 @@
+@@ -261,7 +261,11 @@
          "threading_title": "Threading Mode",
          "threading_subtitle": "Choose how conversations in this room use threads.",
          "threading_help": "A change applies only to new messages. Existing threads stay as they are. Required is good for rooms where each message is a separate topic, such as support requests. Encouraged keeps busy rooms easy to read, but does not force threads."
@@ -49,10 +49,10 @@ index 1d5b48d9c..b0f22eb48 100644
      "security": {
        "title": "Security",
 diff --git a/apps/frontend/src/lib/RoomList.svelte b/apps/frontend/src/lib/RoomList.svelte
-index 2872c83c7..6ff8f7e1f 100644
+index 3d0196951..15d0eb828 100644
 --- a/apps/frontend/src/lib/RoomList.svelte
 +++ b/apps/frontend/src/lib/RoomList.svelte
-@@ -23,6 +23,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -24,6 +24,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
      sidebarLinkTarget
    } from '$lib/navigation/sidebarLinkTarget';
    import { serverRegistry } from '$lib/client';
@@ -64,7 +64,7 @@ index 2872c83c7..6ff8f7e1f 100644
    import { useServerScope } from '$lib/state/server/scope.svelte';
    import RoomGroupSection from '$lib/components/chat/RoomGroupSection.svelte';
    import CreateRoomGroupControl from '$lib/components/chat/CreateRoomGroupControl.svelte';
-@@ -197,6 +202,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -200,6 +205,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
    let editingLinkId = $state<string | null>(null);
    let linkLabel = $state('');
    let linkUrl = $state('');
@@ -72,7 +72,7 @@ index 2872c83c7..6ff8f7e1f 100644
    let deleteGroupDialogVisible = $state(false);
    let deleteGroupTarget = $state<RoomsListGroup | null>(null);
    let deleteLinkDialogVisible = $state(false);
-@@ -398,6 +404,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -401,6 +407,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
      linkGroupId = group.id;
      linkLabel = '';
      linkUrl = '';
@@ -80,7 +80,7 @@ index 2872c83c7..6ff8f7e1f 100644
      linkDialogVisible = true;
    }
  
-@@ -407,14 +414,15 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -410,14 +417,15 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
      editingLinkId = item.link.id;
      linkGroupId = null;
      linkLabel = item.link.label;
@@ -98,7 +98,7 @@ index 2872c83c7..6ff8f7e1f 100644
      if (!label || !url) return;
      try {
        if (editingLinkId) {
-@@ -1096,11 +1104,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1097,11 +1105,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
        {@render navigationRoomLink(room)}
      {/if}
    {:else}
@@ -122,7 +122,7 @@ index 2872c83c7..6ff8f7e1f 100644
        aria-disabled={!target.valid}
        class={[
          'group/link sidebar-item w-full text-start',
-@@ -1120,7 +1138,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1121,7 +1139,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
          <span
            aria-hidden="true"
            class={[
@@ -132,7 +132,7 @@ index 2872c83c7..6ff8f7e1f 100644
              showDragHandle ? 'group-focus-within/link:opacity-0 group-hover/link:opacity-0' : ''
            ]}
          ></span>
-@@ -1426,7 +1445,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1406,7 +1425,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
  {/if}
  
  {#if linkDialogVisible}
@@ -140,10 +140,10 @@ index 2872c83c7..6ff8f7e1f 100644
 +  {#await Promise.all( [import('$lib/ui').then( ({ FormDialog }) => ({ default: FormDialog }) ), import('$lib/ui/form').then( ({ TextInput }) => ({ default: TextInput }) ), import('$lib/ui/form').then( ({ Checkbox }) => ({ default: Checkbox }) )] ) then [FormDialogModule, TextInputModule, CheckboxModule]}
      <FormDialogModule.default
        bind:visible={linkDialogVisible}
-       title={editingLinkId ? m('admin.rooms_admin.edit_link') : m('admin.rooms_admin.create_link')}
-@@ -1448,6 +1467,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+       title={editingLinkId ? m('room.management.edit_link') : m('room.management.create_link')}
+@@ -1428,6 +1447,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
          bind:value={linkUrl}
-         placeholder={m('admin.rooms_admin.link_url_placeholder')}
+         placeholder={m('room.management.link_url_placeholder')}
        />
 +      <CheckboxModule.default
 +        id="sidebar-link-embed"
@@ -259,7 +259,7 @@ index 000000000..22001327a
 +  {/if}
 +</div>
 diff --git a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
-index 0a49639db..9a8f8d950 100644
+index dd5a3422b..fdfa140af 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
 @@ -21,7 +21,12 @@
@@ -276,7 +276,7 @@ index 0a49639db..9a8f8d950 100644
    import { toast } from '$lib/ui/toast';
    import { flip } from 'svelte/animate';
    import { dragHandle, dragHandleZone, dndzone, type DndEvent } from 'svelte-dnd-action';
-@@ -279,12 +284,14 @@
+@@ -273,12 +278,14 @@
    let linkGroupId = $state<string | null>(null);
    let linkLabel = $state('');
    let linkUrl = $state('');
@@ -291,7 +291,7 @@ index 0a49639db..9a8f8d950 100644
      linkDialogVisible = true;
    }
  
-@@ -292,14 +299,15 @@
+@@ -286,14 +293,15 @@
      editingLinkId = link.id;
      linkGroupId = null;
      linkLabel = link.label;
@@ -309,7 +309,7 @@ index 0a49639db..9a8f8d950 100644
      if (!label || !url) return;
  
      const result = editingLinkId
-@@ -548,11 +556,18 @@
+@@ -542,11 +550,18 @@
                          <div class="flex min-w-0 items-baseline gap-1.5">
                            <span
                              aria-hidden="true"
@@ -330,9 +330,9 @@ index 0a49639db..9a8f8d950 100644
                        {/if}
                      </div>
                      <div class="flex items-center gap-1.5">
-@@ -624,6 +639,12 @@
+@@ -618,6 +633,12 @@
      bind:value={linkUrl}
-     placeholder={m('admin.rooms_admin.link_url_placeholder')}
+     placeholder={m('room.management.link_url_placeholder')}
    />
 +  <Checkbox
 +    id="sidebar-link-embed"

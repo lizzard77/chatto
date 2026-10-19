@@ -863,18 +863,18 @@ index 000000000..9b7175823
 +  return (trays[serverId] ??= new ServerDiceTray(serverId));
 +}
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index e7facbb2d..776eb21f7 100644
+index 5125c044a..74fcf9c3e 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-@@ -33,6 +33,7 @@ thread IDs can change while the pane stays mounted.
+@@ -34,6 +34,7 @@ thread IDs can change while the pane stays mounted.
  </script>
  
  <script lang="ts">
 +  import DiceTrayResults from '$lib/diceTray/DiceTrayResults.svelte';
    import { onDestroy, untrack, type Snippet } from 'svelte';
+   import { SvelteSet } from 'svelte/reactivity';
    import type { ClassValue, HTMLAttributes } from 'svelte/elements';
-   import { createReadStateAPI, type MarkThreadAsReadResult } from '@chatto/client/api/readState';
-@@ -422,6 +423,9 @@ thread IDs can change while the pane stays mounted.
+@@ -467,6 +468,9 @@ thread IDs can change while the pane stays mounted.
      </EmptyState>
    {/if}
  
@@ -885,5 +885,5 @@ index e7facbb2d..776eb21f7 100644
      {...composer}
      {roomId}
 -- 
-2.56.0
+2.47.3
 

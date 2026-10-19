@@ -968,7 +968,7 @@ index 000000000..7958a46c7
 +  }
 +}
 diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
-index eaad03736..854597cd4 100644
+index fd6d315b6..b49c545ac 100644
 --- a/apps/frontend/src/lib/i18n/catalogSections.js
 +++ b/apps/frontend/src/lib/i18n/catalogSections.js
 @@ -1,6 +1,7 @@
@@ -1322,7 +1322,7 @@ index 000000000..b59aa6ac1
 +	return strings.Contains(body, imageAnnotationMarker)
 +}
 diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
-index 0e62a5a52..80fc1efb6 100644
+index 94ecfcaa4..97de04c6a 100644
 --- a/cli/internal/core/messages.go
 +++ b/cli/internal/core/messages.go
 @@ -890,7 +890,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us

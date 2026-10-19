@@ -140,7 +140,7 @@ index 6ae067013..59013454f 100644
  @theme {
    /* Readable width of the content column of a pane page (`max-w-pane`), and
 diff --git a/apps/frontend/src/app.html b/apps/frontend/src/app.html
-index 6b0198659..179899223 100644
+index 2f41f8fc8..680024a65 100644
 --- a/apps/frontend/src/app.html
 +++ b/apps/frontend/src/app.html
 @@ -47,7 +47,8 @@
@@ -153,7 +153,7 @@ index 6b0198659..179899223 100644
          ];
  
          // CSS selects the tone that matches the active theme.
-@@ -268,7 +269,8 @@
+@@ -270,7 +271,8 @@
              'orange',
              'pink',
              'violet',
@@ -164,7 +164,7 @@ index 6b0198659..179899223 100644
              ? accent
              : 'cyan';
 diff --git a/apps/frontend/src/appHtml.spec.ts b/apps/frontend/src/appHtml.spec.ts
-index 06c2e383f..58ab90828 100644
+index 7a51f4432..f2fac11db 100644
 --- a/apps/frontend/src/appHtml.spec.ts
 +++ b/apps/frontend/src/appHtml.spec.ts
 @@ -362,7 +362,7 @@ describe('app.html theme bootstrap', () => {

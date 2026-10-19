@@ -1397,7 +1397,7 @@ index 000000000..9eacd6992
 +  return match ? parseDiceRoll(match[1]) : null;
 +}
 diff --git a/apps/frontend/src/lib/i18n/catalogSections.js b/apps/frontend/src/lib/i18n/catalogSections.js
-index 2d2ef1fcb..eaad03736 100644
+index 7995311c5..fd6d315b6 100644
 --- a/apps/frontend/src/lib/i18n/catalogSections.js
 +++ b/apps/frontend/src/lib/i18n/catalogSections.js
 @@ -5,6 +5,7 @@ export const catalogSections = /** @type {const} */ ([
@@ -1485,10 +1485,10 @@ index 066ad7deb..7be9b172a 100644
      if (!button) {
        const anchor = target.closest('a');
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index eade13e41..e7facbb2d 100644
+index 58a842b7f..5125c044a 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-@@ -64,6 +64,7 @@ thread IDs can change while the pane stays mounted.
+@@ -67,6 +67,7 @@ thread IDs can change while the pane stays mounted.
    import { isMessagePostedEvent } from '@chatto/client/timeline/timelineEvents';
    import { ReadThroughTracker, type TimelineReadPosition } from './readThroughTracker';
    import { clearTimelineViewport } from '$lib/state/room/timelineViewport';
@@ -1496,7 +1496,7 @@ index eade13e41..e7facbb2d 100644
  
    let {
      roomId,
-@@ -308,6 +309,14 @@ thread IDs can change while the pane stays mounted.
+@@ -353,6 +354,14 @@ thread IDs can change while the pane stays mounted.
      const semantic = projectionEvent.event?.event;
      if (semantic?.case !== 'messagePosted' || semantic.value.roomId !== roomId) return;
      if ((semantic.value.threadRootEventId || null) !== threadRootEventId) return;
@@ -1512,5 +1512,5 @@ index eade13e41..e7facbb2d 100644
      const actorId = projectionEvent.event?.actorId;
      if (actorId) typingIndicator.removeTypingUser(actorId);
 -- 
-2.56.0
+2.47.3
 
