@@ -41,6 +41,7 @@ export const Room = /*@__PURE__*/ proto3.makeMessageType(
     { no: 7, name: "universal", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 8, name: "slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
     { no: 9, name: "threading_mode", kind: "enum", T: proto3.getEnumType(RoomThreadingMode) },
+    { no: 10, name: "thread_slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */, opt: true },
   ],
 );
 
@@ -103,6 +104,7 @@ export const UpdateRoomRequest = /*@__PURE__*/ proto3.makeMessageType(
     { no: 5, name: "slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */, opt: true },
     { no: 6, name: "threading_mode", kind: "enum", T: proto3.getEnumType(RoomThreadingMode), opt: true },
     { no: 7, name: "update_mask", kind: "message", T: FieldMask },
+    { no: 8, name: "thread_slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */, opt: true },
   ],
 );
 
@@ -219,6 +221,9 @@ export const JoinRoomGroupResponse = /*@__PURE__*/ proto3.makeMessageType(
  * existing one. A human caller can fetch an existing DM without message.post.
  * A valid request from a bot receives PERMISSION_DENIED, including when the
  * room already exists.
+ * New DMs have at most two distinct participants, including the caller.
+ * Larger new participant sets receive INVALID_ARGUMENT. Use a channel room
+ * for new group conversations. Existing group DMs remain accessible.
  *
  * @generated from message chatto.api.v1.StartDMRequest
  */

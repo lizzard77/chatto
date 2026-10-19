@@ -140,6 +140,7 @@ export const ThreadViewerState = /*@__PURE__*/ proto3.makeMessageType(
   () => [
     { no: 1, name: "is_following", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
     { no: 2, name: "has_unread_replies", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
+    { no: 4, name: "slow_mode_next_post_at", kind: "message", T: Timestamp },
   ],
 );
 
@@ -170,6 +171,7 @@ export const MessageViewerState = /*@__PURE__*/ proto3.makeMessageType(
   "chatto.api.v1.MessageViewerState",
   () => [
     { no: 1, name: "can_reply_in_thread", kind: "scalar", T: 8 /* ScalarType.BOOL */, opt: true },
+    { no: 2, name: "thread_slow_mode_next_post_at", kind: "message", T: Timestamp },
   ],
 );
 

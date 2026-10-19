@@ -220,6 +220,7 @@ export const RoomSlowModeChangedEvent = /*@__PURE__*/ proto3.makeMessageType(
   () => [
     { no: 1, name: "room_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */ },
+    { no: 3, name: "thread_slow_mode_seconds", kind: "scalar", T: 13 /* ScalarType.UINT32 */, opt: true },
   ],
 );
 
