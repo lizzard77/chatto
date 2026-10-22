@@ -25,8 +25,8 @@ per device in Settings → Appearance (off by default with reduced motion).
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
  apps/frontend/src/lib/markdown.ts             |  31 +
  apps/frontend/src/lib/ui/MarkdownHtml.svelte  |   9 +
- .../[roomId]/ConversationPane.svelte          |   9 +
- 11 files changed, 1351 insertions(+)
+ .../[roomId]/ConversationPane.svelte          |  17 +-
+ 11 files changed, 1358 insertions(+), 1 deletion(-)
  create mode 100644 apps/frontend/messages/de-DE/dice.json
  create mode 100644 apps/frontend/messages/en-GB/dice.json
  create mode 100644 apps/frontend/src/lib/dice/dice.svelte.ts
@@ -1485,7 +1485,7 @@ index 066ad7deb..7be9b172a 100644
      if (!button) {
        const anchor = target.closest('a');
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index 58a842b7f..5125c044a 100644
+index 58a842b7f..39c2e21e1 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 @@ -67,6 +67,7 @@ thread IDs can change while the pane stays mounted.
@@ -1496,21 +1496,29 @@ index 58a842b7f..5125c044a 100644
  
    let {
      roomId,
-@@ -353,6 +354,14 @@ thread IDs can change while the pane stays mounted.
+@@ -352,7 +353,21 @@ thread IDs can change while the pane stays mounted.
+     if (projectionEvent.resource?.case === 'notifications') readRootReactions();
      const semantic = projectionEvent.event?.event;
      if (semantic?.case !== 'messagePosted' || semantic.value.roomId !== roomId) return;
-     if ((semantic.value.threadRootEventId || null) !== threadRootEventId) return;
-+    // Dice code loads only when a dice bot roll arrives; see $lib/dice.
-+    if (semantic.value.bodyPlaintext?.includes(DICE_MARKER_PREFIX)) {
+-    if ((semantic.value.threadRootEventId || null) !== threadRootEventId) return;
++    const inThisPane = (semantic.value.threadRootEventId || null) === threadRootEventId;
++    // Dice code loads only when a dice bot roll arrives; see $lib/dice. The room
++    // pane also rolls the dice of its threads, as the bot can post every roll
++    // into one collection thread; a roll that two panes see is thrown once.
++    if (
++      (inThisPane || threadRootEventId === null) &&
++      semantic.value.bodyPlaintext?.includes(DICE_MARKER_PREFIX)
++    ) {
 +      const event = projectionEvent.event;
 +      const viewerId = stores.accountId;
 +      void import('$lib/dice/dice.svelte').then(({ rollDiceForLiveMessage }) =>
 +        rollDiceForLiveMessage(event, viewerId)
 +      );
 +    }
++    if (!inThisPane) return;
  
      const actorId = projectionEvent.event?.actorId;
      if (actorId) typingIndicator.removeTypingUser(actorId);
 -- 
-2.47.3
+2.56.0
 

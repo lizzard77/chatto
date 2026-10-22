@@ -222,7 +222,8 @@ export function roll(args, { system, gm, macros }) {
 
     if (system === 'swade') {
         let prefix = args[0]?.toLowerCase();
-        if (prefix === 'dmg' || prefix === 'wild') args = args.slice(1);
+        // `wild` / `extra`: Eigenschaftswurf mit bzw. ohne Wild Die, unabhängig vom GM-Modus
+        if (prefix === 'dmg' || prefix === 'wild' || prefix === 'extra') args = args.slice(1);
         else prefix = null;
         let input = args.join('');
         if (!input) return { text: '⚔️ Savage Worlds: `!roll d8+1`, Schaden mit `!roll dmg d8+2d6`' };
@@ -238,7 +239,8 @@ export function roll(args, { system, gm, macros }) {
                 : { text: `❌ Ungültiger Schadenswurf: \`${input}\` – Beispiel: \`!roll dmg d8+2d6+1\`` };
         }
         if (parsed && parsed.terms.length === 1 && parsed.terms[0].count === 1) {
-            return swadeTrait(parsed, { wild: !gm || prefix === 'wild', gm });
+            const wild = prefix === 'wild' || (prefix !== 'extra' && !gm);
+            return swadeTrait(parsed, { wild, gm });
         }
         return notation(input, macros);
     }
@@ -280,7 +282,7 @@ const HELP = {
         '`!roll dmg d8+2d6+1` → Schaden: alle Würfel explodieren und werden addiert, kein Wild Die',
         '`!roll 3d6x`, `!roll d8x+1` → einfacher Wurf: explodiert nicht, kein Wild Die, keine Steigerungen',
         ...INITIATIVE_HELP,
-        'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards)'
+        'GM-Modus: `!roll d8+1` ohne Wild Die (Extras), `!roll wild d8+1` mit Wild Die (Wild Cards); `!roll extra d8+1` immer ohne'
     ],
     raw: [
         '🎲 **Freies Würfeln** (`!system raw`)',

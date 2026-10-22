@@ -40,12 +40,12 @@ Known expected failures with the patches applied: upstream's `catalogs.spec.ts` 
 ## Patches (summary — details in README.md)
 
 - `0001-iframe-sidebar-links` — sidebar links flagged via URL fragment `#chatto-embed` open in an iframe at `/chat/<server>/embed/<linkId>`. Frontend only.
-- `0002-3d-dice` — dependency-free WebGL dice renderer in `apps/frontend/src/lib/dice/`, lazy-loaded, triggered by dice marker links in bot messages.
+- `0002-3d-dice` — dependency-free WebGL dice renderer in `apps/frontend/src/lib/dice/`, lazy-loaded, triggered by dice marker links in bot messages (the room pane also throws the rolls of its threads, e.g. the dice thread).
 - `0003-image-annotations` — pins/highlighter on images, each annotation stored as a thread reply with a hidden marker link. Server part: `cli/internal/core/image_annotations.go` + one line in `messages.go` (annotation replies don't auto-follow the thread).
 - `0004-nachtgold-scheme` — colour scheme of the server branding (`branding/`): surface tone `navy`, accent `gold`, and a `colorSchemes.nachtgold` preset in `userPreferences.svelte.ts` shown in App Preferences → Appearance. Frontend only.
 
 - `0005-room-links` — `#name` autocomplete in the composer inserts a plain room link; rendered room links become chips with the current room name, or "unknown room" without access; room links to the same server get no link preview in the composer. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
-- `0006-dice-tray` — composer 🎲 button with a flyout (d4–d100, modifier, duality) that posts `!r …` for Pantheon, plus a results card above the room composer (latest roll; per player for GMs, detected from `;gm=1` on the viewer's own rolls). Code in `apps/frontend/src/lib/diceTray/`. Frontend only.
+- `0006-dice-tray` — composer 🎲 button with a flyout (d4–d100, modifier, duality) that posts `!r …` for Pantheon, plus a results card above the room composer (latest roll; per player for GMs, detected from `;gm=1` on the viewer's own rolls). Opens empty; SWADE rooms get a "With Wild Die" toggle (`!r wild|extra d8`); a typed `!r …` that the tray can show opens the tray prefilled instead of posting (macros, `kh`, `dmg` still post). Code in `apps/frontend/src/lib/diceTray/`. Frontend only.
 - `0007-tombstone-backfill` — upstream fix in `EventList.svelte`: a room whose newest page is only deleted messages kept backfilling after a reload (race with the in-flight flag). Frontend only.
 - `0008-deleted-threads` — upstream fix: deleted thread roots whose replies are all deleted vanish (room timeline re-reads the reply count of deleted roots after a retraction; Threads page omits them). Code in `@chatto/client` and the Threads page.
 - `0009-call-featured-once` — upstream fix in `VoiceCallPanel.svelte`: in the sidebar call layout the featured participant no longer appears a second time (as a stretched, empty compact card) in the participant list. Frontend only.

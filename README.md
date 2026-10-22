@@ -136,7 +136,11 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   latest result per player instead. The card follows live events, thread replies included, and
   loads the newest results of the known dice thread on open; the dice thread and the GM flag are
   device-local. Pantheon sets up the thread with `!dice` in a thread and moves all rolls of the
-  room there. Code in `apps/frontend/src/lib/diceTray/` and
+  room there. The flyout opens empty. In Savage Worlds rooms a **With Wild Die** toggle turns a
+  single-die pick into `!r wild d8` or `!r extra d8` (Pantheon: trait roll with or without the
+  Wild Die, regardless of GM mode). A typed `!r …` that the tray can show (dice, modifier,
+  `wild`/`extra`) opens the flyout prefilled instead of posting; other rolls (macros, `4d6kh3`,
+  `dmg …`) go to the bot unchanged. Code in `apps/frontend/src/lib/diceTray/` and
   `lib/components/composer/ComposerDiceTray.svelte`. Frontend only, independent of 0002.
 
 - `0007-tombstone-backfill.patch` – upstream bug fix. When the newest page of a room consists only

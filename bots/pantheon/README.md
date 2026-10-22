@@ -29,7 +29,8 @@ Im GM-Modus 1d20 (GM's Die), kritisch auf natürliche 20.
 **Savage Worlds:** `!roll d8+2` = Eigenschaftswurf mit Wild Die (d6), beide explodieren, der höhere
 zählt; Zielwert 4, je 4 darüber eine Steigerung; 1 auf beiden = kritischer Fehlschlag.
 `!roll dmg d8+2d6+1` = Schaden (alle Würfel explodieren und werden addiert, kein Wild Die).
-Im GM-Modus ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards).
+Im GM-Modus ohne Wild Die (Extras), `!roll wild d8+1` mit (Wild Cards); `!roll extra d8+1` würfelt in
+beiden Modi ohne Wild Die (die Würfel-Leiste des Forks schickt `wild`/`extra` je nach Schalter „Mit Wild Die“).
 Ein `x` hinter dem Würfel (`!roll 3d6x`, `!roll d8x+1`) würfelt einfach: explodiert nicht, kein Wild
 Die, keine Auswertung – auch für Spieler.
 
