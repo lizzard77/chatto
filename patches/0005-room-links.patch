@@ -13,17 +13,18 @@ become a non-clickable "unknown room" chip. Frontend only.
  apps/frontend/messages/en-GB/room_links.json  |   7 +
  apps/frontend/src/app.css                     |  13 ++
  .../src/lib/components/MessageContent.svelte  |  29 ++-
- .../composer/MessageComposer.svelte           |  15 ++
+ .../composer/MessageComposer.svelte           |  16 ++
  .../composer/RoomAutocomplete.svelte          |  61 ++++++
  .../components/composer/TipTapEditor.svelte   |  14 ++
  .../composer/autocomplete.svelte.ts           |  73 ++++++-
  .../lib/components/composer/editorTypes.ts    |   5 +
- .../composer/messageComposerState.svelte.ts   |  10 +-
- .../composer/roomAutocomplete.svelte.spec.ts  |  99 ++++++++++
+ .../composer/linkPreviews.svelte.ts           |  16 +-
+ .../composer/messageComposerState.svelte.ts   |  17 +-
+ .../composer/roomAutocomplete.svelte.spec.ts  |  99 +++++++++
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
- .../frontend/src/lib/roomLinks.svelte.spec.ts | 141 ++++++++++++++
- apps/frontend/src/lib/roomLinks.ts            | 180 ++++++++++++++++++
- 14 files changed, 649 insertions(+), 6 deletions(-)
+ .../frontend/src/lib/roomLinks.svelte.spec.ts | 169 ++++++++++++++++
+ apps/frontend/src/lib/roomLinks.ts            | 188 ++++++++++++++++++
+ 15 files changed, 706 insertions(+), 9 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/room_links.json
  create mode 100644 apps/frontend/messages/en-GB/room_links.json
  create mode 100644 apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
@@ -145,7 +146,7 @@ index 6cc038d06..9c96023b8 100644
    {:then html}
      <MarkdownHtml {html} />
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index 6a08c1142..fa949bde5 100644
+index 6a08c1142..ec4611c66 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 @@ -22,6 +22,8 @@
@@ -157,10 +158,11 @@ index 6a08c1142..fa949bde5 100644
    import ComposerLinkPreview from './ComposerLinkPreview.svelte';
    import ComposerAttachmentPreviews from './ComposerAttachmentPreviews.svelte';
    import ComposerFormattingToolbar from './ComposerFormattingToolbar.svelte';
-@@ -170,6 +172,10 @@
+@@ -170,6 +172,11 @@
      context: composerContext,
      getMembers: () => membersStore().members,
      getMentionPriorityUserIds: () => mentionPriorityUserIds,
++    getServerId: () => serverScope.serverId,
 +    getRoomLinkSource: () => {
 +      const directory = roomLinkDirectoryFor(serverScope.serverId, stores.roomList);
 +      return directory && { serverId: directory.serverId, rooms: [...directory.rooms.values()] };
@@ -168,7 +170,7 @@ index 6a08c1142..fa949bde5 100644
      get membersStore() {
        return membersStore();
      },
-@@ -323,6 +329,15 @@
+@@ -323,6 +330,15 @@
              onClose={() => composer.autocomplete.closeMention()}
            />
          {/if}
@@ -414,8 +416,49 @@ index 61fc9e983..71034a19d 100644
    /** Insert plain text at the current cursor position. */
    insertText: (text: string) => void;
    /** Toggle formatting or insert a footnote at the current selection. */
+diff --git a/apps/frontend/src/lib/components/composer/linkPreviews.svelte.ts b/apps/frontend/src/lib/components/composer/linkPreviews.svelte.ts
+index fc106556f..3714a305e 100644
+--- a/apps/frontend/src/lib/components/composer/linkPreviews.svelte.ts
++++ b/apps/frontend/src/lib/components/composer/linkPreviews.svelte.ts
+@@ -1,6 +1,7 @@
+ import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+ import { extractURLs } from '$lib/linkPreview';
+ import { parseMessageLink } from '$lib/chatLinks';
++import { isRoomLinkOnServer } from '$lib/roomLinks';
+ import type { ComposerLinkPreview } from '@chatto/client/api/linkPreviews';
+ 
+ type LinkPreviewAPI = {
+@@ -14,7 +15,11 @@ export class LinkPreviewState {
+   fetchingURLs = new SvelteSet<string>();
+   #urlDetectionTimeout: ReturnType<typeof setTimeout> | undefined;
+ 
+-  constructor(private readonly getAPI: () => LinkPreviewAPI) {}
++  /** `getServerId` names the composer's server; room links to it get no preview. */
++  constructor(
++    private readonly getAPI: () => LinkPreviewAPI,
++    private readonly getServerId: () => string | null = () => null
++  ) {}
+ 
+   get activeURL(): string | undefined {
+     return this.detectedURLs[0];
+@@ -29,7 +34,14 @@ export class LinkPreviewState {
+     }
+ 
+     this.#urlDetectionTimeout = setTimeout(() => {
+-      const urls = extractURLs(message).filter((u) => !this.dismissedURLs.has(u));
++      const serverId = this.getServerId();
++      // Skip room links to this server; the next URL gets the preview instead
++      const candidates = serverId
++        ? extractURLs(message, 10)
++            .filter((u) => !isRoomLinkOnServer(u, serverId))
++            .slice(0, 1)
++        : extractURLs(message);
++      const urls = candidates.filter((u) => !this.dismissedURLs.has(u));
+       this.detectedURLs = urls;
+ 
+       for (const url of urls) {
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 0e3c1bb53..81b6fb3a4 100644
+index 0e3c1bb53..573cc2cc9 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
@@ -427,16 +470,27 @@ index 0e3c1bb53..81b6fb3a4 100644
  import { DraftState, draftKey } from './draft.svelte';
  import {
    emptyComposerIndentState,
-@@ -112,6 +112,8 @@ type MessageComposerDependencies = {
+@@ -112,6 +112,10 @@ type MessageComposerDependencies = {
    context: ComposerContext;
    getMembers: () => RoomMember[];
    getMentionPriorityUserIds: () => ReadonlySet<string> | undefined;
 +  /** Rooms for `#` autocomplete; see `$lib/roomLinks`. */
 +  getRoomLinkSource?: () => RoomLinkSource | null;
++  /** Server of the composer; room links to it get no link preview. */
++  getServerId?: () => string;
    membersStore: RoomMembersStore;
    mentionRolesStore: MentionRolesStore;
    serverInfo: ServerInfoState;
-@@ -179,7 +181,8 @@ export class MessageComposerState {
+@@ -174,12 +178,16 @@ export class MessageComposerState {
+       dependencies.context.focus = undefined;
+     });
+     this.attachments = new AttachmentsState(() => dependencies.serverInfo);
+-    this.linkPreviews = new LinkPreviewState(dependencies.getLinkPreviewAPI);
++    this.linkPreviews = new LinkPreviewState(
++      dependencies.getLinkPreviewAPI,
++      () => dependencies.getServerId?.() ?? null
++    );
+     this.autocomplete = new AutocompleteState(
        () => this.editorApi,
        () => this.mentionCandidates,
        () => this.mentionRoles,
@@ -446,7 +500,7 @@ index 0e3c1bb53..81b6fb3a4 100644
      );
      this.submission = new ComposerSubmissionState({
        getAPI: dependencies.getMessageAPI,
-@@ -382,6 +385,9 @@ export class MessageComposerState {
+@@ -382,6 +390,9 @@ export class MessageComposerState {
      if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
        return true;
      }
@@ -575,18 +629,20 @@ index b49c545ac..3002d9d2f 100644
    'server_settings',
 diff --git a/apps/frontend/src/lib/roomLinks.svelte.spec.ts b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
 new file mode 100644
-index 000000000..fceb017ba
+index 000000000..741f43a10
 --- /dev/null
 +++ b/apps/frontend/src/lib/roomLinks.svelte.spec.ts
-@@ -0,0 +1,141 @@
+@@ -0,0 +1,169 @@
 +import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 +import { RoomKind } from '@chatto/api-types/api/v1/rooms_pb';
 +import type { RoomListItem } from '@chatto/client/server/rooms';
 +import { type RegisteredServer } from '@chatto/client/server/registry';
 +import { serverRegistry } from '$lib/client';
++import { LinkPreviewState } from '$lib/components/composer/linkPreviews.svelte';
 +import {
 +  buildRoomLinkDirectory,
 +  buildRoomLinkURL,
++  isRoomLinkOnServer,
 +  rankRoomLinkCandidates,
 +  resolveRenderedRoomLinks,
 +  type RoomLinkRoom
@@ -651,6 +707,32 @@ index 000000000..fceb017ba
 +
 +  it('builds an absolute room URL on the origin server', () => {
 +    expect(buildRoomLinkURL('origin', generalId)).toBe(roomURL(generalId));
++  });
++
++  it('recognizes room links to the same server', () => {
++    expect(isRoomLinkOnServer(roomURL(generalId), 'origin')).toBe(true);
++    expect(isRoomLinkOnServer(roomURL(generalId), 'other')).toBe(false);
++    expect(isRoomLinkOnServer(`${roomURL(generalId)}/m/Eabc123DEF456gh`, 'origin')).toBe(false);
++    expect(isRoomLinkOnServer('https://example.com/chat/-/' + generalId, 'origin')).toBe(false);
++  });
++
++  it('makes no link preview for room links to the same server', async () => {
++    vi.useFakeTimers();
++    const fetchLinkPreview = vi.fn(async () => null);
++    const state = new LinkPreviewState(
++      () => ({ fetchLinkPreview }),
++      () => 'origin'
++    );
++    const cleanup = state.scheduleDetection(
++      `[#general](${roomURL(generalId)}) and https://example.com`,
++      false
++    );
++    await vi.advanceTimersByTimeAsync(500);
++    cleanup();
++    vi.useRealTimers();
++
++    expect(state.detectedURLs).toEqual(['https://example.com']);
++    expect(fetchLinkPreview).toHaveBeenCalledExactlyOnceWith('https://example.com');
 +  });
 +
 +  it('shows the current room name for a generated label', () => {
@@ -722,10 +804,10 @@ index 000000000..fceb017ba
 +});
 diff --git a/apps/frontend/src/lib/roomLinks.ts b/apps/frontend/src/lib/roomLinks.ts
 new file mode 100644
-index 000000000..fc15c4942
+index 000000000..26f55bfbf
 --- /dev/null
 +++ b/apps/frontend/src/lib/roomLinks.ts
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,188 @@
 +/**
 + * Room links in message bodies.
 + *
@@ -818,6 +900,14 @@ index 000000000..fc15c4942
 +  return serverId ? { serverId, roomId: parts[2] } : null;
 +}
 +
++/**
++ * Returns whether a URL is a room link to the given server. The composer makes
++ * no link preview for such links: the room chip already shows the room.
++ */
++export function isRoomLinkOnServer(url: string, serverId: string): boolean {
++  return parseRoomLink(url)?.serverId === serverId;
++}
++
 +/** Link label for a room, as inserted by `#` autocomplete. */
 +export function roomLinkLabel(name: string): string {
 +  return `#${name.replace(/[[\]\\]/g, '')}`;
@@ -907,5 +997,5 @@ index 000000000..fc15c4942
 +  return doc.body.innerHTML;
 +}
 -- 
-2.47.3
+2.56.0
 

@@ -123,7 +123,8 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   the label is generated (`#…` or the bare URL); custom labels stay. Links to rooms the viewer
   cannot see (private without access, deleted, archived) become a non-clickable **"unknown room"**
   chip, so the room name in the label does not leak. DMs, threads, messages and other servers stay
-  plain links. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
+  plain links. Room links to the same server get no link preview in the composer (a following URL
+  gets it instead). Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 
 - `0006-dice-tray.patch` – dice tray. A 🎲 button next to the attachment button in the composer
   opens a flyout: pick d4–d100 (right-click removes a die), a modifier, then **Roll**, or
