@@ -4,52 +4,48 @@ Date: Sun, 27 Sep 2026 16:59:56 +0200
 Subject: [PATCH] Frontend: embed sidebar links in an iframe
 
 ---
- apps/frontend/messages/de-DE/admin.json       |  6 +-
- apps/frontend/messages/en-GB/admin.json       |  6 +-
+ apps/frontend/messages/de-DE/room.json        |  4 ++
+ apps/frontend/messages/en-GB/room.json        |  4 ++
  apps/frontend/src/lib/RoomList.svelte         | 37 +++++++++--
  .../src/lib/navigation/sidebarLinkEmbed.ts    | 26 ++++++++
  .../[serverId]/embed/[linkId]/+page.svelte    | 66 +++++++++++++++++++
  .../manage/rooms/AdminRoomLayoutEditor.svelte | 31 +++++++--
- 6 files changed, 159 insertions(+), 13 deletions(-)
+ 6 files changed, 157 insertions(+), 11 deletions(-)
  create mode 100644 apps/frontend/src/lib/navigation/sidebarLinkEmbed.ts
  create mode 100644 apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 
-diff --git a/apps/frontend/messages/de-DE/admin.json b/apps/frontend/messages/de-DE/admin.json
-index e2adc0ded..0fde42db9 100644
---- a/apps/frontend/messages/de-DE/admin.json
-+++ b/apps/frontend/messages/de-DE/admin.json
-@@ -261,7 +261,11 @@
-         "threading_title": "Thread-Modus",
-         "threading_subtitle": "Lege fest, wie Unterhaltungen in diesem Raum Threads verwenden.",
-         "threading_help": "Eine Änderung gilt nur für neue Nachrichten. Bestehende Threads bleiben unverändert. „Erforderlich“ passt zu Räumen, in denen jede Nachricht ein eigenes Thema ist, zum Beispiel Support-Anfragen. „Empfohlen“ hält belebte Räume übersichtlich, erzwingt aber keine Threads."
--      }
-+      },
+diff --git a/apps/frontend/messages/de-DE/room.json b/apps/frontend/messages/de-DE/room.json
+index afbb0a9e8..20e4738bb 100644
+--- a/apps/frontend/messages/de-DE/room.json
++++ b/apps/frontend/messages/de-DE/room.json
+@@ -288,6 +288,10 @@
+       "label": "Beschriftung",
+       "url": "URL",
+       "link_url_placeholder": "https://docs.example.com oder /docs",
 +      "embed_link": "In Chatto öffnen",
 +      "embed_link_description": "Zeigt die Seite im Chatbereich statt in einem neuen Tab. Die Seite muss Einbetten erlauben.",
 +      "embed_open_in_tab": "In neuem Tab öffnen",
-+      "embed_not_found": "Link nicht gefunden"
-     },
-     "security": {
-       "title": "Sicherheit",
-diff --git a/apps/frontend/messages/en-GB/admin.json b/apps/frontend/messages/en-GB/admin.json
-index 75d34e563..6c758b2bf 100644
---- a/apps/frontend/messages/en-GB/admin.json
-+++ b/apps/frontend/messages/en-GB/admin.json
-@@ -261,7 +261,11 @@
-         "threading_title": "Threading Mode",
-         "threading_subtitle": "Choose how conversations in this room use threads.",
-         "threading_help": "A change applies only to new messages. Existing threads stay as they are. Required is good for rooms where each message is a separate topic, such as support requests. Encouraged keeps busy rooms easy to read, but does not force threads."
--      }
-+      },
++      "embed_not_found": "Link nicht gefunden",
+       "delete_group_prompt": "Bist du sicher, dass du das Set {name} löschen möchtest?",
+       "delete_link_prompt": "Bist du sicher, dass du {label} löschen möchtest?",
+       "archive_room": "Raum archivieren",
+diff --git a/apps/frontend/messages/en-GB/room.json b/apps/frontend/messages/en-GB/room.json
+index 6cc1db48e..70575eb3e 100644
+--- a/apps/frontend/messages/en-GB/room.json
++++ b/apps/frontend/messages/en-GB/room.json
+@@ -288,6 +288,10 @@
+       "label": "Label",
+       "url": "URL",
+       "link_url_placeholder": "https://docs.example.com or /docs",
 +      "embed_link": "Open inside Chatto",
 +      "embed_link_description": "Shows the page in the chat area instead of a new tab. The site must allow embedding.",
 +      "embed_open_in_tab": "Open in new tab",
-+      "embed_not_found": "Link not found"
-     },
-     "security": {
-       "title": "Security",
++      "embed_not_found": "Link not found",
+       "delete_group_prompt": "Are you sure you want to delete the set {name}?",
+       "delete_link_prompt": "Are you sure you want to delete {label}?",
+       "archive_room": "Archive room",
 diff --git a/apps/frontend/src/lib/RoomList.svelte b/apps/frontend/src/lib/RoomList.svelte
-index 9613a3bd4..e9fa1f550 100644
+index 9613a3bd4..17338d092 100644
 --- a/apps/frontend/src/lib/RoomList.svelte
 +++ b/apps/frontend/src/lib/RoomList.svelte
 @@ -26,6 +26,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
@@ -147,8 +143,8 @@ index 9613a3bd4..e9fa1f550 100644
        />
 +      <CheckboxModule.default
 +        id="sidebar-link-embed"
-+        label={m('admin.rooms_admin.embed_link')}
-+        description={m('admin.rooms_admin.embed_link_description')}
++        label={m('room.management.embed_link')}
++        description={m('room.management.embed_link_description')}
 +        bind:checked={linkEmbed}
 +      />
      </FormDialogModule.default>
@@ -188,7 +184,7 @@ index 000000000..2b1f0f44a
 +}
 diff --git a/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte b/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 new file mode 100644
-index 000000000..22001327a
+index 000000000..ca3d0b628
 --- /dev/null
 +++ b/apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 @@ -0,0 +1,66 @@
@@ -222,7 +218,7 @@ index 000000000..22001327a
 +  );
 +</script>
 +
-+<PageTitle title={link?.label ?? m('admin.rooms_admin.embed_not_found')} />
++<PageTitle title={link?.label ?? m('room.management.embed_not_found')} />
 +
 +<div class="pane-page">
 +  <PaneHeader title={link?.label ?? ''}>
@@ -233,8 +229,8 @@ index 000000000..22001327a
 +          target="_blank"
 +          rel="noopener noreferrer"
 +          class="pane-header-icon-button text-muted"
-+          title={m('admin.rooms_admin.embed_open_in_tab')}
-+          aria-label={m('admin.rooms_admin.embed_open_in_tab')}
++          title={m('room.management.embed_open_in_tab')}
++          aria-label={m('room.management.embed_open_in_tab')}
 +        >
 +          <span class="pane-header-icon-glyph text-base icon-[uil--external-link-alt]" aria-hidden="true"
 +          ></span>
@@ -255,11 +251,11 @@ index 000000000..22001327a
 +      ></iframe>
 +    {/key}
 +  {:else if navigation.roomGroups.length > 0}
-+    <EmptyState title={m('admin.rooms_admin.embed_not_found')} />
++    <EmptyState title={m('room.management.embed_not_found')} />
 +  {/if}
 +</div>
 diff --git a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
-index dd5a3422b..fdfa140af 100644
+index dd5a3422b..d6a50d15e 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/manage/rooms/AdminRoomLayoutEditor.svelte
 @@ -21,7 +21,12 @@
@@ -336,13 +332,13 @@ index dd5a3422b..fdfa140af 100644
    />
 +  <Checkbox
 +    id="sidebar-link-embed"
-+    label={m('admin.rooms_admin.embed_link')}
-+    description={m('admin.rooms_admin.embed_link_description')}
++    label={m('room.management.embed_link')}
++    description={m('room.management.embed_link_description')}
 +    bind:checked={linkEmbed}
 +  />
  </FormDialog>
  
  {#if deleteGroupConfirmDialogVisible && deleteGroupConfirm}
 -- 
-2.47.3
+2.56.0
 
