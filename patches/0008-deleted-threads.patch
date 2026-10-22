@@ -1,0 +1,182 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Phil Reif <pr@sambal.net>
+Date: Thu, 22 Oct 2026 15:45:58 +0200
+Subject: [PATCH] fix(frontend): hide deleted threads without replies
+
+A deleted thread root stays as a tombstone while it shows replies. Two cases
+kept such rows after all replies were deleted too:
+
+- The room timeline holds no thread replies, so a retracted reply never
+  lowered the root's reply count. The tombstone stayed with its old count
+  until a reload. After a retraction, the room store now reads the reply
+  count of its loaded deleted roots again from the room page around them;
+  message reads omit deleted messages. Retractions in quick succession share
+  one read.
+- The Threads page listed followed threads whose root is deleted and that
+  have no replies left, as "Message deleted". The page now omits them.
+---
+ .../chat/[serverId]/threads/+page.svelte      |  9 +++-
+ .../src/room/messages/MessagesStore.spec.ts   | 43 ++++++++++++++++++
+ .../src/room/messages/MessagesStore.ts        | 45 +++++++++++++++++++
+ .../chatto-client/src/server/timelineSync.ts  |  5 +++
+ 4 files changed, 101 insertions(+), 1 deletion(-)
+
+diff --git a/apps/frontend/src/routes/chat/[serverId]/threads/+page.svelte b/apps/frontend/src/routes/chat/[serverId]/threads/+page.svelte
+index 613bc2dc6..23f31d55d 100644
+--- a/apps/frontend/src/routes/chat/[serverId]/threads/+page.svelte
++++ b/apps/frontend/src/routes/chat/[serverId]/threads/+page.svelte
+@@ -187,10 +187,17 @@
+   );
+   const hasMore = $derived(threadsQuery.hasNextPage);
+ 
++  // A deleted root whose replies are all deleted too has nothing left to open;
++  // the server keeps listing it as long as someone follows it.
++  const isEmptyDeletedThread = (thread: FollowedThread) =>
++    thread.replyCount === 0 &&
++    thread.rootMessage?.event.kind === 'messagePosted' &&
++    Boolean(thread.rootMessage.event.deletedAt);
++
+   // Also filter server-filtered pages so that a thread marked as read leaves the
+   // unread view at once, before the next refetch.
+   const filteredThreads = $derived(
+-    filter === 'unread' ? threads.filter((t) => t.hasUnreadReplies) : threads
++    threads.filter((t) => !isEmptyDeletedThread(t) && (filter !== 'unread' || t.hasUnreadReplies))
+   );
+   const dateSections = $derived.by(() => {
+     const sortDate = (thread: FollowedThread) =>
+diff --git a/packages/chatto-client/src/room/messages/MessagesStore.spec.ts b/packages/chatto-client/src/room/messages/MessagesStore.spec.ts
+index 50eb867a2..742819155 100644
+--- a/packages/chatto-client/src/room/messages/MessagesStore.spec.ts
++++ b/packages/chatto-client/src/room/messages/MessagesStore.spec.ts
+@@ -925,6 +925,49 @@ describe('MessagesStore — room lifecycle ownership', () => {
+     store.dispose();
+   });
+ 
++  it('reads the reply count of loaded deleted thread roots again', async () => {
++    vi.useFakeTimers();
++    const base = threadMessageEvent('root1');
++    const root = {
++      ...base,
++      event: { ...base.event, body: null, deletedAt: '2026-05-27T00:00:05Z', replyCount: 2 }
++    };
++    const emptied = { ...root, event: { ...root.event, replyCount: 0 } };
++    const around = (event: unknown): EventConnectionPage => ({
++      events: [event as never],
++      startCursor: 'tl:root1',
++      endCursor: 'tl:root1',
++      hasOlder: false,
++      hasNewer: false
++    });
++    const getRoomEventsAround = vi
++      .fn<RoomTimelineAPI['getRoomEventsAround']>()
++      .mockResolvedValueOnce(around(root))
++      .mockResolvedValue(around(emptied));
++    const store = new MessagesStore(
++      new FakeQueryClient() as unknown as ServerConnection,
++      () => null,
++      { roomId: 'room-1' },
++      fakeTimelineAPI({ getRoomEventsAround })
++    );
++    await store.jumpToMessage('root1');
++    const replyCount = () => {
++      const event = store.rootEvents.find((row) => row.id === 'root1')?.event;
++      return event && 'replyCount' in event ? event.replyCount : undefined;
++    };
++    expect(replyCount()).toBe(2);
++
++    // Retractions in quick succession share one read.
++    store.refreshDeletedThreadRoots();
++    store.refreshDeletedThreadRoots();
++    await vi.advanceTimersByTimeAsync(300);
++
++    expect(getRoomEventsAround).toHaveBeenCalledTimes(2);
++    expect(replyCount()).toBe(0);
++    vi.useRealTimers();
++    store.dispose();
++  });
++
+   it('keeps an in-flight message jump when lazy latest-page hydration arrives', async () => {
+     const fake = new FakeQueryClient();
+     type AroundPage = Awaited<ReturnType<RoomTimelineAPI['getRoomEventsAround']>>;
+diff --git a/packages/chatto-client/src/room/messages/MessagesStore.ts b/packages/chatto-client/src/room/messages/MessagesStore.ts
+index 4be988945..8d692280b 100644
+--- a/packages/chatto-client/src/room/messages/MessagesStore.ts
++++ b/packages/chatto-client/src/room/messages/MessagesStore.ts
+@@ -305,6 +305,8 @@ export class MessagesStore {
+     // store. Server-event replay itself is managed by the singleton event bus.
+     this.startLoad();
+     this.invalidatePendingPreviewFetches();
++    if (this.#deletedRootRefresh) clearTimeout(this.#deletedRootRefresh);
++    this.#deletedRootRefresh = null;
+   }
+ 
+   /** Root-level events only (excludes thread replies). */
+@@ -370,6 +372,49 @@ export class MessagesStore {
+     this.applyDeletion(messageEventId, retractedAt);
+   }
+ 
++  #deletedRootRefresh: ReturnType<typeof setTimeout> | null = null;
++
++  /**
++   * Read the reply count of loaded deleted thread roots again, shortly after the
++   * last call. A room timeline does not see reply retractions, and the server
++   * omits deleted messages from message reads, so only the room page around the
++   * root has the current count. A root without replies then leaves the timeline
++   * as a context-free tombstone.
++   */
++  refreshDeletedThreadRoots(): void {
++    if (this.scope !== 'room') return;
++    if (this.#deletedRootRefresh) clearTimeout(this.#deletedRootRefresh);
++    this.#deletedRootRefresh = setTimeout(() => {
++      this.#deletedRootRefresh = null;
++      void this.readDeletedThreadRootCounts();
++    }, 300);
++  }
++
++  private async readDeletedThreadRootCounts(): Promise<void> {
++    const ids = this.events
++      .filter(
++        (row) =>
++          isMessagePostedPayload(row.event) && row.event.deletedAt && row.event.replyCount > 0
++      )
++      .map((row) => row.id);
++    for (const id of ids) {
++      let fresh: TimelineEventView | undefined;
++      try {
++        const page = await this.source.fetchAround(id, 1, null);
++        fresh = this.unmaskEvents(page.events).find((event) => event.id === id);
++      } catch {
++        continue;
++      }
++      if (!fresh || !isMessagePostedPayload(fresh.event)) continue;
++      const replyCount = fresh.event.replyCount;
++      const index = this.events.findIndex((event) => event.id === id);
++      const row = this.events[index];
++      if (!row || !isMessagePostedPayload(row.event) || row.event.replyCount === replyCount)
++        continue;
++      this.events = this.events.with(index, { ...row, event: { ...row.event, replyCount } });
++    }
++  }
++
+   /** Include loaded echo wrappers and thread roots in the shared message read. */
+   relatedMessageIds(messageEventId: string): string[] {
+     const ids = new Set<string>();
+diff --git a/packages/chatto-client/src/server/timelineSync.ts b/packages/chatto-client/src/server/timelineSync.ts
+index 0bda9ecef..e8fa4fb33 100644
+--- a/packages/chatto-client/src/server/timelineSync.ts
++++ b/packages/chatto-client/src/server/timelineSync.ts
+@@ -160,6 +160,11 @@ export class TimelineSync {
+     for (const store of this.#options.rooms.timelines(roomId || undefined)) {
+       store.applyMessageRetraction(messageEventId, retractedAt);
+     }
++    // The room timeline holds no thread replies, so a retracted reply never lowers
++    // its root's reply count. A deleted root would keep showing as a tombstone with
++    // replies; read the count of such roots again so an emptied thread disappears.
++    if (!roomId) return;
++    for (const store of this.#options.rooms.timelines(roomId)) store.refreshDeletedThreadRoots();
+   }
+ 
+   /**
+-- 
+2.56.0
+

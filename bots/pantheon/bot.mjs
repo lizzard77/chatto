@@ -211,6 +211,10 @@ async function handleCommand(message) {
         case 'mode':
             return send(`${SYSTEMS[system]} · ${modeText(system, gm)}`);
 
+        case 'purge':
+            if (!gm) return send('🧹 `!purge` dürfen nur GMs (`!gm`).');
+            return purge(message);
+
         case 'help':
         case 'hilfe':
             return send(helpText(system));
@@ -236,6 +240,87 @@ async function diceThread(message, args, send) {
     }
     await setRoomDiceThread(message.roomId, message.threadRootEventId);
     return send('🎲 **Würfel-Thread für diese Session.** Alle Würfe aus dem Raum landen ab jetzt hier; beenden mit `!dice aus`.');
+}
+
+// ---------------------------------------------------------------------------
+// Aufräumen nach der Session (`!purge`)
+// ---------------------------------------------------------------------------
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Alle Nachrichten einer Zeitleiste (Raum oder Thread), über alle Seiten
+async function timelineMessages(method, request) {
+    const messages = [];
+    let before;
+    for (;;) {
+        const service = method === 'GetThreadEvents' ? 'ThreadService' : 'RoomService';
+        const { page } = await rpc(`chatto.api.v1.${service}`, method, { ...request, limit: 500, ...(before ? { before } : {}) });
+        for (const event of page?.events ?? []) {
+            const message = event.messagePosted?.message;
+            if (message && !message.deletedAt) messages.push(message);
+        }
+        if (!page?.hasOlder || !page.startCursor) break;
+        before = page.startCursor;
+    }
+    return messages;
+}
+
+const isCommand = (message) => message.actorId !== botUserId && message.body?.trimStart().startsWith(prefix);
+
+/**
+ * Löscht im Raum alle `!…`-Nachrichten (gültig oder nicht, auch in Threads) und den
+ * Würfel-Thread samt Kopfnachricht. Die Bestätigung verschwindet nach einer Minute wieder.
+ */
+async function purge(message) {
+    const { roomId } = message;
+    const diceRoot = roomDiceThread(roomId);
+    const doomed = new Set();
+    let diceCount = 0;
+
+    const timeline = await timelineMessages('GetRoomEvents', { roomId });
+    for (const m of timeline) if (isCommand(m)) doomed.add(m.id);
+    // Threads nach Befehlen durchsuchen, den Würfel-Thread ganz
+    for (const root of timeline) {
+        const isDice = root.id === diceRoot;
+        if (!isDice && !root.thread?.replyCount) continue;
+        const replies = (await timelineMessages('GetThreadEvents', { roomId, threadRootEventId: root.id }))
+            .filter(m => m.id !== root.id);
+        for (const reply of replies) {
+            if (isDice && !doomed.has(reply.id)) diceCount++;
+            if (isDice || isCommand(reply)) doomed.add(reply.id);
+        }
+    }
+    doomed.add(message.eventId);
+
+    // Antworten vor der Kopfnachricht löschen, sonst bleibt der Thread als Rest stehen
+    let deleted = 0;
+    let failed = 0;
+    const diceRootFound = Boolean(diceRoot) && timeline.some(m => m.id === diceRoot);
+    const order = [...doomed].filter(id => id !== diceRoot);
+    if (diceRootFound) order.push(diceRoot);
+    for (const eventId of order) {
+        try {
+            await rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId });
+            deleted++;
+        } catch (error) {
+            failed++;
+            if (failed === 1) console.warn(`⚠️  Purge in Raum ${roomId}: Löschen fehlgeschlagen (fehlt message.manage?):`, error.message);
+        }
+        await sleep(50);
+    }
+    // Bei Fehlern bleibt der Würfel-Thread gesetzt, ein zweites `!purge` versucht es erneut
+    if (diceRoot && !failed) await setRoomDiceThread(roomId, null);
+    console.log(`🧹 Purge in Raum ${roomId}: ${deleted} gelöscht, ${failed} fehlgeschlagen`);
+
+    const parts = [`${order.length - diceCount - (diceRootFound ? 1 : 0)} Befehle`];
+    if (diceRootFound) parts.push(`Würfel-Thread mit ${diceCount} Nachrichten`);
+    const text = failed
+        ? `🧹 Aufgeräumt, aber ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).`
+        : `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`;
+    const { message: note } = await rpc('chatto.api.v1.MessageService', 'CreateMessage', { roomId, body: text });
+    if (note?.id) setTimeout(() => {
+        rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId: note.id }).catch(() => {});
+    }, 60_000);
 }
 
 // Savage-Worlds-Initiative (Aktionsdeck pro Raum)

@@ -144,6 +144,13 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   settling, return, and never run again. A backfill call that loaded a page now checks again
   itself. One change in `EventList.svelte`; worth reporting upstream.
 
+- `0008-deleted-threads.patch` – upstream bug fix. A deleted thread root whose replies are all
+  deleted too stayed visible: in the room as "This message was deleted" with its old reply count
+  until a reload (the room timeline never lowers the count when a reply is retracted), and on the
+  Threads page as "Message deleted". After a retraction the room store reads the count of its
+  loaded deleted roots again; the Threads page omits followed threads with a deleted root and no
+  replies. Changes in `@chatto/client` (`MessagesStore`, `timelineSync`) and the Threads page.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:
