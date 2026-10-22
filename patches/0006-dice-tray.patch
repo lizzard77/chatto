@@ -12,18 +12,18 @@ roll. It follows live events, thread replies included.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- apps/frontend/messages/de-DE/composer.json    |  19 ++
- apps/frontend/messages/en-GB/composer.json    |  19 ++
- .../composer/ComposerDiceTray.svelte          | 237 ++++++++++++++
+ apps/frontend/messages/de-DE/composer.json    |  23 ++
+ apps/frontend/messages/en-GB/composer.json    |  23 ++
+ .../composer/ComposerDiceTray.svelte          | 256 ++++++++++++++
  .../composer/ComposerToolbar.svelte           |  14 +-
  .../composer/MessageComposer.svelte           |   6 +-
  .../composer/messageComposerState.svelte.ts   |  11 +
  .../src/lib/diceTray/DiceTrayResults.svelte   | 116 +++++++
  apps/frontend/src/lib/diceTray/DieIcon.svelte |  47 +++
- .../src/lib/diceTray/diceTray.svelte.spec.ts  | 166 ++++++++++
- .../src/lib/diceTray/diceTray.svelte.ts       | 301 ++++++++++++++++++
+ .../src/lib/diceTray/diceTray.svelte.spec.ts  | 186 ++++++++++
+ .../src/lib/diceTray/diceTray.svelte.ts       | 328 ++++++++++++++++++
  .../[roomId]/ConversationPane.svelte          |   4 +
- 11 files changed, 937 insertions(+), 3 deletions(-)
+ 11 files changed, 1011 insertions(+), 3 deletions(-)
  create mode 100644 apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DieIcon.svelte
@@ -31,10 +31,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 
 diff --git a/apps/frontend/messages/de-DE/composer.json b/apps/frontend/messages/de-DE/composer.json
-index ea3adf5b0..84324a98d 100644
+index ea3adf5b0..31c22b98f 100644
 --- a/apps/frontend/messages/de-DE/composer.json
 +++ b/apps/frontend/messages/de-DE/composer.json
-@@ -73,6 +73,25 @@
+@@ -73,6 +73,29 @@
        "all_room_members": "Alle Raummitglieder",
        "members_here": "Gerade anwesende Mitglieder",
        "role": "Rolle"
@@ -56,15 +56,19 @@ index ea3adf5b0..84324a98d 100644
 +      "per_player": "Letzter Wurf pro Spieler",
 +      "hide": "Bis zum nächsten Wurf ausblenden",
 +      "wild_die": "Mit Wild Die",
-+      "wild_die_hint": "Savage Worlds: Eigenschaftswurf mit einem Würfel, Pantheon würfelt den Wild Die (W6) dazu"
++      "wild_die_hint": "Savage Worlds: Eigenschaftswurf mit einem Würfel, Pantheon würfelt den Wild Die (W6) dazu",
++      "advantage": "Vorteil",
++      "disadvantage": "Nachteil",
++      "normal": "Normal",
++      "advantage_label": "Vorteil oder Nachteil (Daggerheart)"
      }
    }
  }
 diff --git a/apps/frontend/messages/en-GB/composer.json b/apps/frontend/messages/en-GB/composer.json
-index 10bb6be57..dc4437f7d 100644
+index 10bb6be57..6f23e4daf 100644
 --- a/apps/frontend/messages/en-GB/composer.json
 +++ b/apps/frontend/messages/en-GB/composer.json
-@@ -73,6 +73,25 @@
+@@ -73,6 +73,29 @@
        "all_room_members": "All room members",
        "members_here": "Members currently here",
        "role": "Role"
@@ -86,16 +90,20 @@ index 10bb6be57..dc4437f7d 100644
 +      "per_player": "Latest roll per player",
 +      "hide": "Hide until the next roll",
 +      "wild_die": "With Wild Die",
-+      "wild_die_hint": "Savage Worlds: trait roll with one die; Pantheon adds the Wild Die (d6)"
++      "wild_die_hint": "Savage Worlds: trait roll with one die; Pantheon adds the Wild Die (d6)",
++      "advantage": "Advantage",
++      "disadvantage": "Disadvantage",
++      "normal": "Normal",
++      "advantage_label": "Advantage or disadvantage (Daggerheart)"
      }
    }
  }
 diff --git a/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
 new file mode 100644
-index 000000000..26d76e6a0
+index 000000000..949939653
 --- /dev/null
 +++ b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,256 @@
 +<!--
 +@component
 +
@@ -106,7 +114,7 @@ index 000000000..26d76e6a0
 +-->
 +<script lang="ts">
 +  import { page } from '$app/state';
-+  import { CompactActionButton, ContextMenu } from '$lib/ui';
++  import { CompactActionButton, ContextMenu, SegmentedControl } from '$lib/ui';
 +  import { Button } from '$lib/ui/form';
 +  import { m } from '$lib/i18n/messages';
 +  import { toastError } from '$lib/utils/errorMessage';
@@ -119,6 +127,7 @@ index 000000000..26d76e6a0
 +    dualityCommand,
 +    isTraitPool,
 +    rollCommand,
++    type DiceAdvantage,
 +    type DicePool,
 +    type DiceTrayApi,
 +    type DieSides
@@ -140,6 +149,8 @@ index 000000000..26d76e6a0
 +  let modifier = $state(0);
 +  // Savage Worlds: roll a single trait die with or without the Wild Die. Kept between rolls.
 +  let wild = $state(true);
++  // Daggerheart: advantage or disadvantage on the duality roll
++  let advantage = $state<DiceAdvantage>('normal');
 +  const swade = $derived(roomId !== null && tray.system(roomId) === 'swade');
 +  const command = $derived(rollCommand(pool, modifier, swade ? wild : null));
 +  const duality = $derived(roomId !== null && tray.system(roomId) === 'dh');
@@ -166,6 +177,7 @@ index 000000000..26d76e6a0
 +      pool = { ...prefill.pool };
 +      modifier = prefill.modifier;
 +      if (prefill.wild !== null) wild = prefill.wild;
++      advantage = prefill.advantage;
 +      return true;
 +    }
 +  };
@@ -188,6 +200,7 @@ index 000000000..26d76e6a0
 +  function clear(): void {
 +    pool = {};
 +    modifier = 0;
++    advantage = 'normal';
 +  }
 +
 +  async function send(body: string | null): Promise<void> {
@@ -273,13 +286,27 @@ index 000000000..26d76e6a0
 +              class="flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border border-border px-1 py-1.5 text-sm font-medium hover:bg-surface-emphasized"
 +              disabled={sending}
 +              title={m('composer.dice_tray.duality_hint')}
-+              onclick={() => send(dualityCommand(modifier))}
++              onclick={() => send(dualityCommand(modifier, advantage))}
 +            >
 +              <DieIcon sides={12} />
 +              {m('composer.dice_tray.duality')}
 +            </button>
 +          {/if}
 +        </div>
++
++        {#if duality}
++          <SegmentedControl
++            label={m('composer.dice_tray.advantage_label')}
++            options={[
++              { value: 'dis', label: m('composer.dice_tray.disadvantage') },
++              { value: 'normal', label: m('composer.dice_tray.normal') },
++              { value: 'adv', label: m('composer.dice_tray.advantage') }
++            ]}
++            value={advantage}
++            onchange={(value) => (advantage = value)}
++            class="w-full"
++          />
++        {/if}
 +
 +        {#if swade}
 +          <label
@@ -636,10 +663,10 @@ index 000000000..e5a6c8b40
 +</svg>
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
 new file mode 100644
-index 000000000..a738302ed
+index 000000000..1e3af47dc
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,186 @@
 +import { describe, expect, it } from 'vitest';
 +import {
 +  ServerDiceTray,
@@ -674,16 +701,34 @@ index 000000000..a738302ed
 +    expect(parseRollCommand('!r 2d6+d20+3')).toEqual({
 +      pool: { 6: 2, 20: 1 },
 +      modifier: 3,
-+      wild: null
++      wild: null,
++      advantage: 'normal'
 +    });
 +    expect(parseRollCommand('!roll wild W8 - 1')).toEqual({
 +      pool: { 8: 1 },
 +      modifier: -1,
-+      wild: true
++      wild: true,
++      advantage: 'normal'
 +    });
-+    expect(parseRollCommand('!R extra d6')).toEqual({ pool: { 6: 1 }, modifier: 0, wild: false });
-+    expect(parseRollCommand('!r')).toEqual({ pool: {}, modifier: 0, wild: null });
-+    expect(parseRollCommand('!r +2')).toEqual({ pool: {}, modifier: 2, wild: null });
++    expect(parseRollCommand('!R extra d6')).toEqual({
++      pool: { 6: 1 },
++      modifier: 0,
++      wild: false,
++      advantage: 'normal'
++    });
++    expect(parseRollCommand('!r')).toEqual({
++      pool: {},
++      modifier: 0,
++      wild: null,
++      advantage: 'normal'
++    });
++    expect(parseRollCommand('!r adv +2')).toEqual({
++      pool: {},
++      modifier: 2,
++      wild: null,
++      advantage: 'adv'
++    });
++    expect(parseRollCommand('!r -1 disadvantage')?.advantage).toBe('dis');
 +  });
 +
 +  it('leaves other text and rolls the tray cannot show to the bot', () => {
@@ -696,8 +741,7 @@ index 000000000..a738302ed
 +      '!r dmg d8+2d6',
 +      '!r d7',
 +      '!r 11d6',
-+      '!r d6x',
-+      '!r adv'
++      '!r d6x'
 +    ]) {
 +      expect(parseRollCommand(text)).toBeNull();
 +    }
@@ -709,6 +753,9 @@ index 000000000..a738302ed
 +    expect(dualityCommand(0)).toBe('!r');
 +    expect(dualityCommand(2)).toBe('!r +2');
 +    expect(dualityCommand(-1)).toBe('!r -1');
++    expect(dualityCommand(2, 'adv')).toBe('!r adv +2');
++    expect(dualityCommand(0, 'dis')).toBe('!r dis');
++    expect(dualityCommand(0, 'normal')).toBe('!r');
 +  });
 +});
 +
@@ -808,10 +855,10 @@ index 000000000..a738302ed
 +});
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 new file mode 100644
-index 000000000..f431fa418
+index 000000000..f1217c259
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,328 @@
 +/**
 + * Dice tray: roll dice from the composer and show the latest dice bot results.
 + *
@@ -870,8 +917,19 @@ index 000000000..f431fa418
 +  return `!r ${prefix}${terms.join('+')}${signed(modifier)}`;
 +}
 +
-+/** Tray contents taken from a typed roll command. `wild` is null when the command names none. */
-+export type DicePrefill = { pool: DicePool; modifier: number; wild: boolean | null };
++/** Daggerheart advantage on the duality roll: the bot adds or subtracts a d6. */
++export type DiceAdvantage = 'dis' | 'normal' | 'adv';
++
++/**
++ * Tray contents taken from a typed roll command. `wild` is null when the
++ * command names none; `advantage` is `normal` without `adv` or `dis`.
++ */
++export type DicePrefill = {
++  pool: DicePool;
++  modifier: number;
++  wild: boolean | null;
++  advantage: DiceAdvantage;
++};
 +
 +/** A composer's dice tray: opens with given contents; false when it cannot open now. */
 +export type DiceTrayApi = { openWith(prefill: DicePrefill): boolean };
@@ -887,7 +945,19 @@ index 000000000..f431fa418
 +export function parseRollCommand(text: string): DicePrefill | null {
 +  const match = ROLL_COMMAND.exec(text.trim());
 +  if (!match) return null;
-+  let rest = (match[1] ?? '').trim();
++  let advantage: DiceAdvantage = 'normal';
++  // `adv` / `dis` may stand anywhere, as the bot reads them
++  let rest = (match[1] ?? '')
++    .split(/\s+/)
++    .filter((word) => {
++      const lower = word.toLowerCase();
++      if (lower === 'adv' || lower === 'advantage') advantage = 'adv';
++      else if (lower === 'dis' || lower === 'disadvantage') advantage = 'dis';
++      else return true;
++      return false;
++    })
++    .join(' ')
++    .trim();
 +  let wild: boolean | null = null;
 +  const prefix = /^(wild|extra)\s+/i.exec(rest);
 +  if (prefix) {
@@ -897,7 +967,7 @@ index 000000000..f431fa418
 +  const pool: DicePool = {};
 +  let modifier = 0;
 +  const input = rest.replace(/\s+/g, '');
-+  if (!input) return { pool, modifier, wild };
++  if (!input) return { pool, modifier, wild, advantage };
 +  const term = /([+-])?(?:(\d*)[dDwW](\d+)|(\d+))/y;
 +  let index = 0;
 +  while (index < input.length) {
@@ -917,12 +987,16 @@ index 000000000..f431fa418
 +    }
 +    index = term.lastIndex;
 +  }
-+  return { pool, modifier, wild };
++  return { pool, modifier, wild, advantage };
 +}
 +
-+/** The Daggerheart duality roll: the bot rolls Hope and Fear (or the GM's die). */
-+export function dualityCommand(modifier: number): string {
-+  return modifier ? `!r ${signed(modifier)}` : '!r';
++/**
++ * The Daggerheart duality roll: the bot rolls Hope and Fear (or the GM's die),
++ * with advantage or disadvantage as an extra d6.
++ */
++export function dualityCommand(modifier: number, advantage: DiceAdvantage = 'normal'): string {
++  const parts = [advantage === 'normal' ? '' : advantage, signed(modifier)].filter(Boolean);
++  return parts.length ? `!r ${parts.join(' ')}` : '!r';
 +}
 +
 +/** Dice systems of the bot; `dh` (Daggerheart) is the bot's default. */
