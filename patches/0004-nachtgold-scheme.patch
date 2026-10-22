@@ -98,7 +98,7 @@ index 1b3c01b25..fc3614380 100644
        "contrast": {
          "label": "Contrast",
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index 6ae067013..59013454f 100644
+index c8294aa98..dd4e3c77c 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
 @@ -513,6 +513,11 @@
@@ -140,7 +140,7 @@ index 6ae067013..59013454f 100644
  @theme {
    /* Readable width of the content column of a pane page (`max-w-pane`), and
 diff --git a/apps/frontend/src/app.html b/apps/frontend/src/app.html
-index 2f41f8fc8..680024a65 100644
+index f75d6d065..afccde594 100644
 --- a/apps/frontend/src/app.html
 +++ b/apps/frontend/src/app.html
 @@ -47,7 +47,8 @@

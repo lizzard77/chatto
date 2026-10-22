@@ -1409,7 +1409,7 @@ index 7995311c5..fd6d315b6 100644
    'error_page',
    'media',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 583ef5856..7454a926d 100644
+index 3bb5e351c..46d7df671 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
 @@ -8,6 +8,7 @@ import { configureMarkdownLinks } from './markdownLinks';

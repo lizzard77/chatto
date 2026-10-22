@@ -980,7 +980,7 @@ index fd6d315b6..b49c545ac 100644
    'chat',
    'common',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 7454a926d..79dea911f 100644
+index 46d7df671..19db40da6 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
 @@ -1,5 +1,6 @@

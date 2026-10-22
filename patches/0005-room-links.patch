@@ -58,7 +58,7 @@ index 000000000..fc911c939
 +  }
 +}
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index 59013454f..e41d204ed 100644
+index dd4e3c77c..c01c257f3 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
 @@ -1796,6 +1796,19 @@
