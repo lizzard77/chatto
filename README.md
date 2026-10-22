@@ -152,6 +152,12 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   loaded deleted roots again; the Threads page omits followed threads with a deleted root and no
   replies. Changes in `@chatto/client` (`MessagesStore`, `timelineSync`) and the Threads page.
 
+- `0009-call-featured-once.patch` – upstream bug fix. In the sidebar call layout the featured
+  participant (active speaker or pinned tile) also stayed in the participant list as a compact card;
+  in the two-column grid it stretched to the height of the video card beside it and looked like a
+  second, empty tile. The list now omits the featured participant. One change in
+  `VoiceCallPanel.svelte`.
+
 ### Dice marker (bot ↔ frontend interface)
 
 The only coupling between a dice bot and the renderer is this text format in the message body:

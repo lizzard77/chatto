@@ -48,6 +48,7 @@ Known expected failures with the patches applied: upstream's `catalogs.spec.ts` 
 - `0006-dice-tray` — composer 🎲 button with a flyout (d4–d100, modifier, duality) that posts `!r …` for Pantheon, plus a results card above the room composer (latest roll; per player for GMs, detected from `;gm=1` on the viewer's own rolls). Code in `apps/frontend/src/lib/diceTray/`. Frontend only.
 - `0007-tombstone-backfill` — upstream fix in `EventList.svelte`: a room whose newest page is only deleted messages kept backfilling after a reload (race with the in-flight flag). Frontend only.
 - `0008-deleted-threads` — upstream fix: deleted thread roots whose replies are all deleted vanish (room timeline re-reads the reply count of deleted roots after a retraction; Threads page omits them). Code in `@chatto/client` and the Threads page.
+- `0009-call-featured-once` — upstream fix in `VoiceCallPanel.svelte`: in the sidebar call layout the featured participant no longer appears a second time (as a stretched, empty compact card) in the participant list. Frontend only.
 
 Fork features communicate through **marker links in message bodies** rather than new server APIs, so unpatched clients just see a plain link:
 - Dice: `[🎲](#chatto-dice:<kind>.<sides>.<value>,…;by=<userId>)` — the bot ↔ frontend contract; full spec in README.md.
