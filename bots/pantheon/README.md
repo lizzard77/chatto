@@ -19,7 +19,7 @@
 | `!gm` / `!dm`, `!player`, `!mode` | GM-Modus pro User an/aus, aktuellen Modus zeigen |
 | `!roll …` / `!r …` | Würfeln nach dem System des Raums, siehe unten |
 | `!dice` (im Thread), `!dice aus` | Thread als Würfel-Sammelthread des Raums setzen / beenden |
-| `!purge` (nur GM) | Nach der Session aufräumen: alle `!…`-Nachrichten und den Würfel-Thread löschen |
+| `!purge` (nur GM) | Nach der Session aufräumen: `!…`-Nachrichten, Bot-Nachrichten, Würfel-Thread und Reste gelöschter Threads löschen |
 | `!ini …` / `!init …` | Savage-Worlds-Initiative mit Aktionsdeck, siehe unten |
 | `!help` / `!hilfe` | Hilfe zu allen Systemen, das des Raums zuerst |
 
@@ -59,11 +59,13 @@ schreibt stattdessen den Namen des Würfelnden vor das Ergebnis (`**Phil** 🎲 
 braucht der Bot `message.manage` in den Räumen; fehlt sie, bleibt der Befehl stehen (Warnung im Log).
 Mit `DELETE_COMMANDS=false` antwortet er wie früher als Antwort auf den Befehl.
 
-**Aufräumen nach der Session:** `!purge` (nur im GM-Modus) löscht im Raum alle Nachrichten, die mit
-`!` anfangen – egal ob gültiger Befehl oder Tippfehler, auch in Threads – und den aktuellen
-Würfel-Thread mit allen Antworten und der Kopfnachricht; danach ist kein Würfel-Thread mehr gesetzt.
-Antworten des Bots außerhalb des Würfel-Threads bleiben stehen. Die Bestätigung („🧹 Aufgeräumt: …“)
-löscht sich nach einer Minute selbst. Braucht `message.manage`.
+**Aufräumen nach der Session:** `!purge` (nur im GM-Modus) löscht im Raum, auch in Threads:
+alle Nachrichten, die mit `!` anfangen (egal ob gültiger Befehl oder Tippfehler), alle Nachrichten
+des Bots, den aktuellen Würfel-Thread mit allen Antworten und der Kopfnachricht, und die restlichen
+Antworten in Threads, deren Kopfnachricht schon gelöscht ist. Danach ist kein Würfel-Thread mehr
+gesetzt (außer wenn etwas nicht gelöscht werden konnte). Die Bestätigung („🧹 Aufgeräumt: …“) löscht
+sich nach einer Minute selbst. Braucht `message.manage`. Gelöschte Threads ohne Antworten blendet der
+gepatchte Client aus (Patch 0008).
 
 Alte Würfe von vor dieser Änderung räumt `cleanup.mjs` auf: Es schreibt den Namen vor jede alte
 Antwort und löscht die beantworteten Befehle (nur Hauptzeitleiste, keine Threads). Ohne `APPLY=1`

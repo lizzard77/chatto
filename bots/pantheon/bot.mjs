@@ -248,7 +248,7 @@ async function diceThread(message, args, send) {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// Alle Nachrichten einer Zeitleiste (Raum oder Thread), über alle Seiten
+// Alle Nachrichten einer Zeitleiste (Raum oder Thread) über alle Seiten, auch gelöschte
 async function timelineMessages(method, request) {
     const messages = [];
     let before;
@@ -257,7 +257,7 @@ async function timelineMessages(method, request) {
         const { page } = await rpc(`chatto.api.v1.${service}`, method, { ...request, limit: 500, ...(before ? { before } : {}) });
         for (const event of page?.events ?? []) {
             const message = event.messagePosted?.message;
-            if (message && !message.deletedAt) messages.push(message);
+            if (message) messages.push(message);
         }
         if (!page?.hasOlder || !page.startCursor) break;
         before = page.startCursor;
@@ -268,40 +268,50 @@ async function timelineMessages(method, request) {
 const isCommand = (message) => message.actorId !== botUserId && message.body?.trimStart().startsWith(prefix);
 
 /**
- * Löscht im Raum alle `!…`-Nachrichten (gültig oder nicht, auch in Threads) und den
- * Würfel-Thread samt Kopfnachricht. Die Bestätigung verschwindet nach einer Minute wieder.
+ * Räumt den Raum nach der Session auf: löscht alle `!…`-Nachrichten (gültig oder nicht),
+ * alle Nachrichten des Bots, den Würfel-Thread samt Kopfnachricht und die restlichen
+ * Antworten in Threads, deren Kopfnachricht schon gelöscht ist – auch in Threads.
+ * Die Bestätigung verschwindet nach einer Minute wieder.
  */
 async function purge(message) {
     const { roomId } = message;
     const diceRoot = roomDiceThread(roomId);
-    const doomed = new Set();
-    let diceCount = 0;
+    // ID → Grund; der erste Grund zählt
+    const doomed = new Map();
+    const mark = (m, reason) => { if (!m.deletedAt && !doomed.has(m.id)) doomed.set(m.id, reason); };
+    const classify = (m) => {
+        if (isCommand(m)) mark(m, 'command');
+        else if (m.actorId === botUserId) mark(m, 'bot');
+    };
 
     const timeline = await timelineMessages('GetRoomEvents', { roomId });
-    for (const m of timeline) if (isCommand(m)) doomed.add(m.id);
-    // Threads nach Befehlen durchsuchen, den Würfel-Thread ganz
+    for (const m of timeline) classify(m);
+    const roots = new Set();
     for (const root of timeline) {
         const isDice = root.id === diceRoot;
+        // Kopf gelöscht, aber noch Antworten da: der Rest-Thread kommt ganz weg
+        const orphaned = Boolean(root.deletedAt);
         if (!isDice && !root.thread?.replyCount) continue;
         const replies = (await timelineMessages('GetThreadEvents', { roomId, threadRootEventId: root.id }))
             .filter(m => m.id !== root.id);
         for (const reply of replies) {
-            if (isDice && !doomed.has(reply.id)) diceCount++;
-            if (isDice || isCommand(reply)) doomed.add(reply.id);
+            if (isDice) mark(reply, 'dice');
+            else if (orphaned) mark(reply, 'orphan');
+            else classify(reply);
         }
+        if (isDice) { mark(root, 'dice'); roots.add(root.id); }
+        else if (doomed.has(root.id)) roots.add(root.id);
     }
-    doomed.add(message.eventId);
+    if (!doomed.has(message.eventId)) doomed.set(message.eventId, 'command');
 
-    // Antworten vor der Kopfnachricht löschen, sonst bleibt der Thread als Rest stehen
-    let deleted = 0;
+    // Antworten vor den Kopfnachrichten löschen, sonst bleibt der Thread als Rest stehen
+    const order = [...doomed.keys()].sort((a, b) => roots.has(a) - roots.has(b));
+    const counts = { command: 0, bot: 0, dice: 0, orphan: 0 };
     let failed = 0;
-    const diceRootFound = Boolean(diceRoot) && timeline.some(m => m.id === diceRoot);
-    const order = [...doomed].filter(id => id !== diceRoot);
-    if (diceRootFound) order.push(diceRoot);
     for (const eventId of order) {
         try {
             await rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId });
-            deleted++;
+            counts[doomed.get(eventId)]++;
         } catch (error) {
             failed++;
             if (failed === 1) console.warn(`⚠️  Purge in Raum ${roomId}: Löschen fehlgeschlagen (fehlt message.manage?):`, error.message);
@@ -310,13 +320,13 @@ async function purge(message) {
     }
     // Bei Fehlern bleibt der Würfel-Thread gesetzt, ein zweites `!purge` versucht es erneut
     if (diceRoot && !failed) await setRoomDiceThread(roomId, null);
-    console.log(`🧹 Purge in Raum ${roomId}: ${deleted} gelöscht, ${failed} fehlgeschlagen`);
+    console.log(`🧹 Purge in Raum ${roomId}: ${JSON.stringify(counts)}, ${failed} fehlgeschlagen`);
 
-    const parts = [`${order.length - diceCount - (diceRootFound ? 1 : 0)} Befehle`];
-    if (diceRootFound) parts.push(`Würfel-Thread mit ${diceCount} Nachrichten`);
-    const text = failed
-        ? `🧹 Aufgeräumt, aber ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).`
-        : `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`;
+    const parts = [`${counts.command} Befehle`, `${counts.bot} Bot-Nachrichten`];
+    if (counts.dice) parts.push(`Würfel-Thread (${counts.dice} Nachrichten)`);
+    if (counts.orphan) parts.push(`${counts.orphan} Antworten in gelöschten Threads`);
+    const text = `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`
+        + (failed ? ` ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).` : '');
     const { message: note } = await rpc('chatto.api.v1.MessageService', 'CreateMessage', { roomId, body: text });
     if (note?.id) setTimeout(() => {
         rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId: note.id }).catch(() => {});
