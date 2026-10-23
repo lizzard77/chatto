@@ -212,7 +212,6 @@ async function handleCommand(message) {
             return send(`${SYSTEMS[system]} · ${modeText(system, gm)}`);
 
         case 'purge':
-            if (!gm) return send('🧹 `!purge` dürfen nur GMs (`!gm`).');
             return purge(message);
 
         case 'help':
@@ -268,45 +267,37 @@ async function timelineMessages(method, request) {
 const isCommand = (message) => message.actorId !== botUserId && message.body?.trimStart().startsWith(prefix);
 
 /**
- * Räumt den Raum nach der Session auf: löscht alle `!…`-Nachrichten (gültig oder nicht),
- * alle Nachrichten des Bots, den Würfel-Thread samt Kopfnachricht und die restlichen
- * Antworten in Threads, deren Kopfnachricht schon gelöscht ist – auch in Threads.
+ * Räumt den Raum nach der Session auf: löscht alle `!…`-Nachrichten (gültig oder nicht) und
+ * alle Nachrichten des Bots, im Raum und in allen Threads. Was Menschen schreiben, bleibt
+ * stehen – auch die Kopfnachricht des Würfel-Threads (z. B. ein Kartenbild) und Zeichnungen.
  * Die Bestätigung verschwindet nach einer Minute wieder.
  */
 async function purge(message) {
     const { roomId } = message;
     const diceRoot = roomDiceThread(roomId);
-    // ID → Grund; der erste Grund zählt
+    // ID → Grund
     const doomed = new Map();
-    const mark = (m, reason) => { if (!m.deletedAt && !doomed.has(m.id)) doomed.set(m.id, reason); };
     const classify = (m) => {
-        if (isCommand(m)) mark(m, 'command');
-        else if (m.actorId === botUserId) mark(m, 'bot');
+        if (m.deletedAt || doomed.has(m.id)) return;
+        if (isCommand(m)) doomed.set(m.id, 'command');
+        else if (m.actorId === botUserId) doomed.set(m.id, 'bot');
     };
 
     const timeline = await timelineMessages('GetRoomEvents', { roomId });
     for (const m of timeline) classify(m);
     const roots = new Set();
     for (const root of timeline) {
-        const isDice = root.id === diceRoot;
-        // Kopf gelöscht, aber noch Antworten da: der Rest-Thread kommt ganz weg
-        const orphaned = Boolean(root.deletedAt);
-        if (!isDice && !root.thread?.replyCount) continue;
+        if (root.id !== diceRoot && !root.thread?.replyCount) continue;
         const replies = (await timelineMessages('GetThreadEvents', { roomId, threadRootEventId: root.id }))
             .filter(m => m.id !== root.id);
-        for (const reply of replies) {
-            if (isDice) mark(reply, 'dice');
-            else if (orphaned) mark(reply, 'orphan');
-            else classify(reply);
-        }
-        if (isDice) { mark(root, 'dice'); roots.add(root.id); }
-        else if (doomed.has(root.id)) roots.add(root.id);
+        for (const reply of replies) classify(reply);
+        if (doomed.has(root.id)) roots.add(root.id);
     }
     if (!doomed.has(message.eventId)) doomed.set(message.eventId, 'command');
 
     // Antworten vor den Kopfnachrichten löschen, sonst bleibt der Thread als Rest stehen
     const order = [...doomed.keys()].sort((a, b) => roots.has(a) - roots.has(b));
-    const counts = { command: 0, bot: 0, dice: 0, orphan: 0 };
+    const counts = { command: 0, bot: 0 };
     let failed = 0;
     for (const eventId of order) {
         try {
@@ -318,13 +309,9 @@ async function purge(message) {
         }
         await sleep(50);
     }
-    // Bei Fehlern bleibt der Würfel-Thread gesetzt, ein zweites `!purge` versucht es erneut
-    if (diceRoot && !failed) await setRoomDiceThread(roomId, null);
     console.log(`🧹 Purge in Raum ${roomId}: ${JSON.stringify(counts)}, ${failed} fehlgeschlagen`);
 
     const parts = [`${counts.command} Befehle`, `${counts.bot} Bot-Nachrichten`];
-    if (counts.dice) parts.push(`Würfel-Thread (${counts.dice} Nachrichten)`);
-    if (counts.orphan) parts.push(`${counts.orphan} Antworten in gelöschten Threads`);
     const text = `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`
         + (failed ? ` ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).` : '');
     const { message: note } = await rpc('chatto.api.v1.MessageService', 'CreateMessage', { roomId, body: text });
