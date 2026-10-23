@@ -105,8 +105,10 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   marker link is hidden when rendering, so the thread shows only "📍 3" or "🖍️". Live for everyone;
   the chat timeline itself shows nothing extra. Deleting a pin renumbers the later pins.
   **Server part:** annotation replies do not auto-follow the thread (neither for the annotator nor
-  for the image's author), so they cause no thread notifications
-  (`cli/internal/core/image_annotations.go` plus one line in `messages.go`).
+  for the image's author), so they cause no thread notifications. The same applies to dice bot
+  replies (any `#chatto-dice…` marker) and `!…` bot commands, so a dice collection thread notifies
+  only people who follow it on purpose (`cli/internal/core/image_annotations.go` plus one line in
+  `messages.go`). Existing follows stay; unfollow with the bell in the thread.
 
 - `0004-nachtgold-scheme.patch` – the **Nachtgold** colour scheme of the Rollenspiel server
   (`branding/`): a new surface tone **Navy** (hue 250, chroma 0.075), a new accent colour **Gold**

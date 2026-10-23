@@ -41,7 +41,7 @@ Known expected failures with the patches applied: upstream's `catalogs.spec.ts` 
 
 - `0001-iframe-sidebar-links` — sidebar links flagged via URL fragment `#chatto-embed` open in an iframe at `/chat/<server>/embed/<linkId>`. Frontend only.
 - `0002-3d-dice` — dependency-free WebGL dice renderer in `apps/frontend/src/lib/dice/`, lazy-loaded, triggered by dice marker links in bot messages (the room pane also throws the rolls of its threads, e.g. the dice thread).
-- `0003-image-annotations` — pins/highlighter on images, each annotation stored as a thread reply with a hidden marker link. Server part: `cli/internal/core/image_annotations.go` + one line in `messages.go` (annotation replies don't auto-follow the thread).
+- `0003-image-annotations` — pins/highlighter on images, each annotation stored as a thread reply with a hidden marker link. Server part: `cli/internal/core/image_annotations.go` + one line in `messages.go`: "quiet" thread replies don't auto-follow the thread — annotation replies, dice bot replies (`#chatto-dice…` markers) and `!…` bot commands, so dice threads cause no notifications unless someone follows them on purpose.
 - `0004-nachtgold-scheme` — colour scheme of the server branding (`branding/`): surface tone `navy`, accent `gold`, and a `colorSchemes.nachtgold` preset in `userPreferences.svelte.ts` shown in App Preferences → Appearance. Frontend only.
 
 - `0005-room-links` — `#name` autocomplete in the composer inserts a plain room link; rendered room links become chips with the current room name, or "unknown room" without access; room links to the same server get no link preview in the composer. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.

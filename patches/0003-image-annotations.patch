@@ -31,9 +31,10 @@ the image's author, so they cause no thread notifications by themselves.
  .../src/lib/ui/AttachmentPreview.svelte       |  12 +-
  apps/frontend/src/lib/ui/ZoomableImage.svelte |  39 ++-
  .../chat/modals/AttachmentViewerModal.svelte  | 110 ++++++
- cli/internal/core/image_annotations.go        |  14 +
+ cli/internal/core/image_annotations.go        |  22 ++
+ cli/internal/core/image_annotations_test.go   |  23 ++
  cli/internal/core/messages.go                 |   3 +-
- 13 files changed, 1081 insertions(+), 10 deletions(-)
+ 14 files changed, 1112 insertions(+), 10 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/annotations.json
  create mode 100644 apps/frontend/messages/en-GB/annotations.json
  create mode 100644 apps/frontend/src/lib/annotations/AnnotationLayer.svelte
@@ -41,6 +42,7 @@ the image's author, so they cause no thread notifications by themselves.
  create mode 100644 apps/frontend/src/lib/annotations/annotationSpec.ts
  create mode 100644 apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
  create mode 100644 cli/internal/core/image_annotations.go
+ create mode 100644 cli/internal/core/image_annotations_test.go
 
 diff --git a/apps/frontend/messages/de-DE/annotations.json b/apps/frontend/messages/de-DE/annotations.json
 new file mode 100644
@@ -1303,10 +1305,10 @@ index 478668540..366f4b7d6 100644
 +{/snippet}
 diff --git a/cli/internal/core/image_annotations.go b/cli/internal/core/image_annotations.go
 new file mode 100644
-index 000000000..b59aa6ac1
+index 000000000..89f724153
 --- /dev/null
 +++ b/cli/internal/core/image_annotations.go
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,22 @@
 +package core
 +
 +import "strings"
@@ -1315,14 +1317,51 @@ index 000000000..b59aa6ac1
 +// annotations (lizzard fork patch) append to a thread reply.
 +const imageAnnotationMarker = "](#chatto-annot:v1:"
 +
-+// isImageAnnotationReply reports whether a message body is an image annotation.
-+// Such replies are bookkeeping for the image viewer, so posting one does not
-+// auto-follow the thread for the poster or the image's author.
-+func isImageAnnotationReply(body string) bool {
-+	return strings.Contains(body, imageAnnotationMarker)
++// diceMarker starts the marker links that dice bots such as Pantheon append to
++// their replies (`#chatto-dice:`, `#chatto-dice-note:`, `#chatto-dice-system:`).
++const diceMarker = "](#chatto-dice"
++
++// isQuietThreadReply reports whether a thread reply is bookkeeping that must not
++// make anyone follow the thread: an image annotation, a dice bot reply, or a bot
++// command such as `!r 2d6`. Posting one does not auto-follow the thread for the
++// poster or the root's author, so a dice collection thread or the annotations
++// of an image cause no thread notifications by themselves.
++func isQuietThreadReply(body string) bool {
++	return strings.Contains(body, imageAnnotationMarker) ||
++		strings.Contains(body, diceMarker) ||
++		strings.HasPrefix(strings.TrimSpace(body), "!")
++}
+diff --git a/cli/internal/core/image_annotations_test.go b/cli/internal/core/image_annotations_test.go
+new file mode 100644
+index 000000000..ef65dd4ad
+--- /dev/null
++++ b/cli/internal/core/image_annotations_test.go
+@@ -0,0 +1,23 @@
++package core
++
++import "testing"
++
++func TestIsQuietThreadReply(t *testing.T) {
++	quiet := []string{
++		"↔️ 📍 0 [⌖](#chatto-annot:v1:A1:pin:10,20)",
++		"**Simon** 🎲 **7** — d6+d8 [🎲](#chatto-dice:std.6.1,std.8.6;by=U1)",
++		"❌ Zu viele Würfel [​](#chatto-dice-note:by=U1)",
++		"!r 2d6",
++		"  !dice",
++	}
++	for _, body := range quiet {
++		if !isQuietThreadReply(body) {
++			t.Errorf("isQuietThreadReply(%q) = false, want true", body)
++		}
++	}
++	for _, body := range []string{"Gute Idee!", "Wer würfelt? !r kommt gleich", "[Karte](https://example.com/#chatto-embed)"} {
++		if isQuietThreadReply(body) {
++			t.Errorf("isQuietThreadReply(%q) = true, want false", body)
++		}
++	}
 +}
 diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
-index 94ecfcaa4..97de04c6a 100644
+index 94ecfcaa4..e371803b1 100644
 --- a/cli/internal/core/messages.go
 +++ b/cli/internal/core/messages.go
 @@ -890,7 +890,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
@@ -1330,11 +1369,11 @@ index 94ecfcaa4..97de04c6a 100644
  	// ThreadProjection now, so no KV write — but we still need the
  	// root author for the auto-follow logic below.
 -	if inThread != "" {
-+	// Fork: image annotation replies do not make anyone follow the thread.
-+	if inThread != "" && !isImageAnnotationReply(body) {
++	// Fork: image annotations, dice bot replies and bot commands do not make anyone follow the thread.
++	if inThread != "" && !isQuietThreadReply(body) {
  		rootEvent, err := c.GetRoomEventByEventID(ctx, kind, room_id, inThread)
  		if err != nil {
  			c.logger.Warn("Failed to get thread root event",
 -- 
-2.47.3
+2.56.0
 
