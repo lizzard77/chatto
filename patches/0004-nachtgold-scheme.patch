@@ -22,7 +22,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  10 files changed, 130 insertions(+), 13 deletions(-)
 
 diff --git a/apps/frontend/messages/de-DE/settings.json b/apps/frontend/messages/de-DE/settings.json
-index f757ab5be..7ac579930 100644
+index 56a085006..c8ebdf1f4 100644
 --- a/apps/frontend/messages/de-DE/settings.json
 +++ b/apps/frontend/messages/de-DE/settings.json
 @@ -216,6 +216,13 @@
@@ -60,7 +60,7 @@ index f757ab5be..7ac579930 100644
        "contrast": {
          "label": "Kontrast",
 diff --git a/apps/frontend/messages/en-GB/settings.json b/apps/frontend/messages/en-GB/settings.json
-index 1b3c01b25..fc3614380 100644
+index dd7bd9a10..5a3f2b2ae 100644
 --- a/apps/frontend/messages/en-GB/settings.json
 +++ b/apps/frontend/messages/en-GB/settings.json
 @@ -216,6 +216,13 @@
@@ -98,10 +98,10 @@ index 1b3c01b25..fc3614380 100644
        "contrast": {
          "label": "Contrast",
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index c8294aa98..dd4e3c77c 100644
+index 7e982cb20..996c8bb96 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
-@@ -513,6 +513,11 @@
+@@ -514,6 +514,11 @@
    --accent-strong: var(--color-neutral-700);
    --accent-bright: var(--color-neutral-300);
  }
@@ -113,7 +113,7 @@ index c8294aa98..dd4e3c77c 100644
  
  /*
   * Surface tones.
-@@ -749,7 +754,10 @@
+@@ -750,7 +755,10 @@
  :root[data-theme='dark'][data-dark-tone='plum'],
  [data-tone='clay'],
  :root:not([data-theme='dark'])[data-light-tone='clay'],
@@ -125,7 +125,7 @@ index c8294aa98..dd4e3c77c 100644
    --tone-source-100: oklch(50% calc(var(--tone-chroma) * 0.2) var(--tone-hue));
    --tone-source-200: oklch(50% calc(var(--tone-chroma) * 0.3) var(--tone-hue));
    --tone-source-300: oklch(50% calc(var(--tone-chroma) * 0.45) var(--tone-hue));
-@@ -785,6 +793,13 @@
+@@ -786,6 +794,13 @@
    --tone-hue: 45;
    --tone-chroma: 0.06;
  }

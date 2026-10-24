@@ -1520,5 +1520,5 @@ index 58a842b7f..39c2e21e1 100644
      const actorId = projectionEvent.event?.actorId;
      if (actorId) typingIndicator.removeTypingUser(actorId);
 -- 
-2.56.0
+2.47.3
 

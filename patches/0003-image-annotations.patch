@@ -1375,5 +1375,5 @@ index 94ecfcaa4..e371803b1 100644
  		if err != nil {
  			c.logger.Warn("Failed to get thread root event",
 -- 
-2.56.0
+2.47.3
 
