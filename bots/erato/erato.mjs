@@ -34,6 +34,10 @@ import {
     dispose
 } from '@livekit/rtc-node';
 import { DegradationPreference, VideoCodec } from '@livekit/rtc-ffi-bindings';
+import { createClient } from '@chatto/client';
+import {
+    RoomDirectoryScope, RoomDirectoryService, RoomService, ServerService, UserService, ViewerService, VoiceCallService
+} from '@chatto/client/types';
 import { captureBackend, readFrames, startVideoCapture } from './share.mjs';
 
 // Steuer-Socket je Channel; zugleich die Sperre "ein Erato pro PC und Channel"
@@ -123,7 +127,6 @@ const videoCodec = VideoCodec[(process.env.ERATO_VIDEO_CODEC || 'vp8').toUpperCa
 const videoAsCamera = process.env.ERATO_VIDEO_AS === 'camera';
 // Steuerung per Chatto-DM: Logins, die Erato Befehle schicken dürfen (sonst aus)
 const dmUsers = (process.env.ERATO_DM_USERS || '').split(',').map(s => s.trim().replace(/^@/, '')).filter(Boolean);
-const dmPollMs = Number(process.env.ERATO_DM_POLL_MS || 2000);
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -136,35 +139,21 @@ if (!apiKey) {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectRPC (JSON)
+// Chatto-Verbindung
 // ---------------------------------------------------------------------------
 
-async function rpc(service, method, body = {}) {
-    const res = await fetch(`${chattoUrl}/api/connect/chatto.api.v1.${service}/${method}`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Connect-Protocol-Version': '1'
-        },
-        body: JSON.stringify(body)
-    });
-    const text = await res.text();
-    if (!res.ok) {
-        const err = new Error(`${service}/${method} → HTTP ${res.status}: ${text}`);
-        try { err.code = JSON.parse(text).code; } catch { }
-        throw err;
-    }
-    return text ? JSON.parse(text) : {};
-}
+const client = createClient();
+const server = client.connect({ serverUrl: chattoUrl, apiKey });
+const calls = server.service(VoiceCallService);
+const FAILED_PRECONDITION = 9; // Connect-Fehlercode
 
 // Nach JoinCall ist der Call nicht sofort aktiv, daher ein paar Versuche
 async function createCallToken() {
     for (let attempt = 1; ; attempt++) {
         try {
-            return await rpc('VoiceCallService', 'CreateCallToken', { roomId });
+            return await calls.createCallToken({ roomId });
         } catch (error) {
-            if (error.code !== 'failed_precondition' || attempt >= 10) throw error;
+            if (error.code !== FAILED_PRECONDITION || attempt >= 10) throw error;
             await new Promise(r => setTimeout(r, 500));
         }
     }
@@ -377,70 +366,29 @@ function startConsole() {
 }
 
 // ---------------------------------------------------------------------------
-// Steuerung per Chatto-DM (Abfrage alle ERATO_DM_POLL_MS, kein Realtime/Protobuf)
+// Steuerung per Chatto-DM (Realtime über @chatto/client)
 // ---------------------------------------------------------------------------
 
-let dmTimer;
-const dmCursors = new Map(); // roomId → Cursor hinter dem neuesten gesehenen Ereignis
-let dmRoomsCheckedAt = 0;
-let dmAllowed = new Set();
-
-async function startDmControl(botUserId) {
+async function startDmControl() {
     if (!dmUsers.length) return;
+    const allowed = new Set();
     for (const login of dmUsers) {
         try {
-            const { user } = await rpc('UserService', 'GetUser', { login });
-            const id = user?.user?.id;
-            if (id) dmAllowed.add(id);
+            const { user } = await server.service(UserService).getUser({ target: { case: 'login', value: login } });
+            if (user?.user?.id) allowed.add(user.user.id);
             else console.warn(`ERATO_DM_USERS: ${login} hat keine ID`);
         } catch (error) {
-            console.warn(`ERATO_DM_USERS: ${login} nicht gefunden (${error.code || error.message})`);
+            console.warn(`ERATO_DM_USERS: ${login} nicht gefunden (${error.message})`);
         }
     }
-    if (!dmAllowed.size) return;
+    if (!allowed.size) return;
     console.log(`   Steuerung per DM: ${dmUsers.join(', ')}`);
-    let lastError = '';
-    const poll = async () => {
-        try {
-            await pollDms(botUserId);
-            lastError = '';
-        } catch (error) {
-            // Nur bei neuem Fehler melden, nicht alle paar Sekunden dasselbe
-            if (error.message !== lastError) console.warn(`DM-Abfrage: ${error.message}`);
-            if (error.code === 'permission_denied' && error.message !== lastError) {
-                console.warn('   Bot braucht im Bereich „Direct messages“ message.read und message.post (Server Admin → Bots)');
-            }
-            lastError = error.message;
-        }
-        if (!shuttingDown) dmTimer = setTimeout(poll, dmPollMs);
-    };
-    await poll();
-}
-
-async function pollDms(botUserId) {
-    // Neue DMs (jemand schreibt Erato zum ersten Mal) alle 30 s nachladen
-    if (Date.now() - dmRoomsCheckedAt > 30_000) {
-        dmRoomsCheckedAt = Date.now();
-        const { rooms = [] } = await rpc('RoomDirectoryService', 'ListRooms', {
-            scope: 'ROOM_DIRECTORY_SCOPE_DMS', page: { limit: 100 }
-        });
-        for (const { room } of rooms) {
-            if (dmCursors.has(room.id)) continue;
-            // Ältere Nachrichten nicht als Befehle ausführen: beim neuesten Ereignis einsteigen
-            const { page } = await rpc('RoomService', 'GetRoomEvents', { roomId: room.id, limit: 1 });
-            dmCursors.set(room.id, page?.endCursor || '');
-        }
-    }
-    for (const [dmRoomId, cursor] of dmCursors) {
-        const { page } = await rpc('RoomService', 'GetRoomEvents',
-            cursor ? { roomId: dmRoomId, limit: 50, after: cursor } : { roomId: dmRoomId, limit: 50 });
-        if (page?.endCursor) dmCursors.set(dmRoomId, page.endCursor);
-        for (const event of page?.events || []) {
-            const message = event.messagePosted?.message;
-            if (!message?.body || event.actorId === botUserId || !dmAllowed.has(event.actorId)) continue;
-            await handleDm(dmRoomId, message.body);
-        }
-    }
+    await server.run(async ({ message }) => {
+        if (allowed.has(message.authorId)) await handleDm(message.roomId, message.body);
+    }, {
+        reasons: ['direct_message'],
+        onError: (error) => console.warn(`DM-Steuerung: ${error.message}`)
+    });
 }
 
 // Mehrere Erato auf diesem PC teilen sich den Bot und sehen dieselbe DM:
@@ -459,7 +407,7 @@ async function handleDm(dmRoomId, body) {
         reply = (matches.length ? 'Mehrere Erato laufen, Channel mit `-c <channel>` angeben:' : 'Kein passendes Erato läuft:')
             + '\n' + instances.map(s => `- #${s.name}`).join('\n');
     }
-    if (reply) await rpc('MessageService', 'CreateMessage', { roomId: dmRoomId, body: reply });
+    if (reply) await server.createMessage({ roomId: dmRoomId }, reply);
 }
 
 // ---------------------------------------------------------------------------
@@ -469,11 +417,11 @@ async function handleDm(dmRoomId, body) {
 async function listCallRooms() {
     const rooms = [];
     for (let offset = 0; ; offset += 100) {
-        const res = await rpc('RoomDirectoryService', 'ListRooms', {
-            scope: 'ROOM_DIRECTORY_SCOPE_CHANNELS',
+        const res = await server.service(RoomDirectoryService).listRooms({
+            scope: RoomDirectoryScope.CHANNELS,
             page: { limit: 100, offset }
         });
-        rooms.push(...(res.rooms || []));
+        rooms.push(...res.rooms);
         if (!res.page?.hasMore) break;
     }
     const granted = (r, permission) => r.viewerState?.permissions?.some(p => p.permission === permission && p.granted);
@@ -530,12 +478,12 @@ async function shutdown(code = 0) {
     shuttingDown = true;
     console.log('\n🛑 Beende Erato...');
     ffmpeg?.kill();
-    clearTimeout(dmTimer);
     share?.capture?.kill();
     controlServer?.close();
     teardownVirtualSink();
     await room?.disconnect().catch(() => { });
-    if (joined) await rpc('VoiceCallService', 'LeaveCall', { roomId }).catch(() => { });
+    if (joined) await calls.leaveCall({ roomId }).catch(() => { });
+    client.close();
     await dispose();
     process.exit(code);
 }
@@ -545,17 +493,17 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 async function main() {
-    const viewer = await rpc('ViewerService', 'GetViewer');
+    const viewer = await server.service(ViewerService).getViewer({});
     const channel = await chooseRoom();
     ({ id: roomId, name: roomName } = channel);
     sinkName = `erato-${roomId}`;
     await acquireControl();
-    if (!channel.member) await rpc('RoomService', 'JoinRoom', { roomId });
-    const { runtime } = await rpc('ServerService', 'GetRuntimeConfig');
+    if (!channel.member) await server.service(RoomService).joinRoom({ roomId });
+    const { runtime } = await server.service(ServerService).getRuntimeConfig({});
     const livekitUrl = process.env.LIVEKIT_URL || runtime?.livekitUrl;
     if (!livekitUrl) throw new Error('Chatto liefert keine LiveKit-URL – Calls nicht konfiguriert?');
 
-    const join = await rpc('VoiceCallService', 'JoinCall', { roomId });
+    const join = await calls.joinCall({ roomId });
     if (!join.joined) throw new Error('JoinCall abgelehnt');
     joined = true;
     const { token, e2eeKey } = await createCallToken();
@@ -600,7 +548,7 @@ async function main() {
     console.log(`   ${HELP}`);
 
     startConsole();
-    startDmControl(viewer.user?.profile?.id).catch((error) => console.warn(`DM-Steuerung: ${error.message}`));
+    startDmControl().catch((error) => console.warn(`DM-Steuerung: ${error.message}`));
 
     await pump(ffmpeg, source);
 }

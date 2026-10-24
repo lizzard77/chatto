@@ -49,8 +49,9 @@ node erato.mjs ctl -c "Game - London 1888" stop   # nötig, wenn mehrere Erato l
 
 **Per Chatto-DM:** Mit `ERATO_DM_USERS=phil` (Logins, kommagetrennt) nimmt Erato dieselben Befehle
 als Direktnachricht an (`share`, `stop`, `status`, `quit`, bei mehreren Erato auf dem PC mit
-`-c <channel>` davor) und antwortet dort. Andere Absender werden ignoriert. Erato fragt seine DMs alle
-`ERATO_DM_POLL_MS` (Standard 2000) ab und führt nur Nachrichten aus, die nach seinem Start kommen.
+`-c <channel>` davor) und antwortet dort. Andere Absender werden ignoriert. Erato empfängt DMs in
+Echtzeit über [`@chatto/client`](https://www.npmjs.com/package/@chatto/client) und führt nur
+Nachrichten aus, die nach seinem Start kommen.
 
 Das Fenster wird in `ERATO_VIDEO_SIZE` (Standard 1920×1080) eingepasst, schwarze Ränder bei anderem
 Seitenverhältnis; Mauszeiger ist sichtbar. Erato sendet es als Bildschirmfreigabe (braucht

@@ -1,14 +1,11 @@
 /**
  * Pantheon – Würfel-Bot für Chatto (Daggerheart, Savage Worlds, freies Würfeln)
- * Hört per Realtime-WebSocket auf alle Nachrichten in Räumen, in denen der Bot
- * Mitglied ist, und antwortet über die ConnectRPC-API (JSON).
+ * Hört über @chatto/client (Realtime) auf alle Nachrichten in Räumen, in denen der Bot
+ * Mitglied ist, und antwortet über dessen Requests.
  */
 
-import {
-    RealtimeServerFrame,
-    RealtimeSubscribe,
-    RealtimeInitialState
-} from './gen/chatto/realtime/v1/realtime_pb.js';
+import { createClient } from '@chatto/client';
+import { MessageService, RoomService, ThreadService, UserService } from '@chatto/client/types';
 import { SYSTEMS, helpText, modeText, roll } from './rolls.mjs';
 import { dealRound, parseNames } from './initiative.mjs';
 import {
@@ -26,9 +23,7 @@ const dice3d = process.env.DICE_3D !== 'false';
 // Die Antwort nennt dann den Würfelnden. Braucht `message.manage` im Raum.
 const deleteCommands = process.env.DELETE_COMMANDS !== 'false';
 
-const PROTOCOL_VERSION = 4;
-const HEARTBEAT_STALL_MS = 75_000;
-const MAX_RECONNECT_MS = 30_000;
+const MAX_RETRY_MS = 30_000;
 
 let macros = {};
 try {
@@ -43,25 +38,13 @@ if (!apiKey) {
 }
 
 // ---------------------------------------------------------------------------
-// ConnectRPC (JSON)
+// Chatto-Verbindung
 // ---------------------------------------------------------------------------
 
-async function rpc(service, method, body = {}) {
-    const res = await fetch(`${chattoUrl}/api/connect/${service}/${method}`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Connect-Protocol-Version': '1'
-        },
-        body: JSON.stringify(body)
-    });
-    const text = await res.text();
-    if (!res.ok) {
-        throw new Error(`${service}/${method} → HTTP ${res.status}: ${text}`);
-    }
-    return text ? JSON.parse(text) : {};
-}
+const client = createClient();
+const server = client.connect({ serverUrl: chattoUrl, apiKey });
+const messageService = server.service(MessageService);
+const deleteMessage = (roomId, eventId) => messageService.deleteMessage({ roomId, eventId });
 
 // ---------------------------------------------------------------------------
 // Antworten
@@ -100,7 +83,7 @@ async function displayName(userId) {
     if (cached && Date.now() - cached.at < NAME_TTL_MS) return cached.name;
     let name = null;
     try {
-        const res = await rpc('chatto.api.v1.UserService', 'GetUser', { userId });
+        const res = await server.service(UserService).getUser({ target: { case: 'userId', value: userId } });
         name = res.user?.user?.displayName || res.user?.user?.login || null;
     } catch (error) {
         console.warn('Anzeigename nicht lesbar:', error.message);
@@ -115,10 +98,7 @@ const escapeMarkdown = (text) => text.replace(/[\\`*_~[\]()#>|]/g, '\\$&');
 const deleteDenied = new Set();
 async function deleteCommand(message) {
     try {
-        await rpc('chatto.api.v1.MessageService', 'DeleteMessage', {
-            roomId: message.roomId,
-            eventId: message.eventId
-        });
+        await deleteMessage(message.roomId, message.eventId);
     } catch (error) {
         if (deleteDenied.has(message.roomId)) return;
         deleteDenied.add(message.roomId);
@@ -144,9 +124,7 @@ async function reply(message, { text, dice, swade }, { thread = null, gm = false
     let body = (name ? `**${escapeMarkdown(name)}** ` : '') + text.replace(/@/g, '\\@');
     if (dice3d) body += diceMarker(dice, message.sender, swade, gm, system);
     if (note && !dice?.length) body += noteMarker(message.sender, system);
-    const post = (threadRootEventId, inReplyTo) => rpc('chatto.api.v1.MessageService', 'CreateMessage', {
-        roomId: message.roomId, body, threadRootEventId, inReplyTo
-    });
+    const post = (threadRootId, inReplyTo) => server.createMessage({ roomId: message.roomId, threadRootId }, body, { inReplyTo });
     const inReplyTo = deleteCommands || elsewhere ? undefined : message.eventId;
     if (elsewhere) {
         try {
@@ -248,15 +226,16 @@ async function diceThread(message, args, send) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // Alle Nachrichten einer Zeitleiste (Raum oder Thread) über alle Seiten, auch gelöschte
-async function timelineMessages(method, request) {
+async function timelineMessages(request) {
     const messages = [];
     let before;
     for (;;) {
-        const service = method === 'GetThreadEvents' ? 'ThreadService' : 'RoomService';
-        const { page } = await rpc(`chatto.api.v1.${service}`, method, { ...request, limit: 500, ...(before ? { before } : {}) });
-        for (const event of page?.events ?? []) {
-            const message = event.messagePosted?.message;
-            if (message) messages.push(message);
+        const cursor = before ? { case: 'before', value: before } : undefined;
+        const { page } = request.threadRootEventId
+            ? await server.service(ThreadService).getThreadEvents({ ...request, limit: 500, cursor })
+            : await server.service(RoomService).getRoomEvents({ ...request, limit: 500, cursor });
+        for (const { event } of page?.events ?? []) {
+            if (event.case === 'messagePosted' && event.value.message) messages.push(event.value.message);
         }
         if (!page?.hasOlder || !page.startCursor) break;
         before = page.startCursor;
@@ -283,12 +262,12 @@ async function purge(message) {
         else if (m.actorId === botUserId) doomed.set(m.id, 'bot');
     };
 
-    const timeline = await timelineMessages('GetRoomEvents', { roomId });
+    const timeline = await timelineMessages({ roomId });
     for (const m of timeline) classify(m);
     const roots = new Set();
     for (const root of timeline) {
         if (root.id !== diceRoot && !root.thread?.replyCount) continue;
-        const replies = (await timelineMessages('GetThreadEvents', { roomId, threadRootEventId: root.id }))
+        const replies = (await timelineMessages({ roomId, threadRootEventId: root.id }))
             .filter(m => m.id !== root.id);
         for (const reply of replies) classify(reply);
         if (doomed.has(root.id)) roots.add(root.id);
@@ -301,7 +280,7 @@ async function purge(message) {
     let failed = 0;
     for (const eventId of order) {
         try {
-            await rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId });
+            await deleteMessage(roomId, eventId);
             counts[doomed.get(eventId)]++;
         } catch (error) {
             failed++;
@@ -314,10 +293,8 @@ async function purge(message) {
     const parts = [`${counts.command} Befehle`, `${counts.bot} Bot-Nachrichten`];
     const text = `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`
         + (failed ? ` ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).` : '');
-    const { message: note } = await rpc('chatto.api.v1.MessageService', 'CreateMessage', { roomId, body: text });
-    if (note?.id) setTimeout(() => {
-        rpc('chatto.api.v1.MessageService', 'DeleteMessage', { roomId, eventId: note.id }).catch(() => {});
-    }, 60_000);
+    const note = await server.createMessage({ roomId }, text);
+    setTimeout(() => deleteMessage(roomId, note.id).catch(() => {}), 60_000);
 }
 
 // Savage-Worlds-Initiative (Aktionsdeck pro Raum)
@@ -359,19 +336,6 @@ async function initiative(roomId, args, send) {
 // Realtime
 // ---------------------------------------------------------------------------
 
-const seenEventIds = new Set();
-function markSeen(id) {
-    seenEventIds.add(id);
-    if (seenEventIds.size > 2000) {
-        seenEventIds.delete(seenEventIds.values().next().value);
-    }
-}
-
-let resumeCursor;
-let reconnectAttempt = 0;
-let stopped = false;
-let processing = Promise.resolve();
-
 // Befehle, die schon ausgeführt wurden (auch nach mehrfachem Bearbeiten nur einmal)
 const handledCommands = new Set();
 
@@ -389,9 +353,6 @@ async function runCommand(message) {
 }
 
 async function handleEvent(event) {
-    if (seenEventIds.has(event.id)) return;
-    markSeen(event.id);
-
     if (event.event.case === 'messagePosted') {
         const posted = event.event.value;
         if (posted.echoOfEventId) return;
@@ -410,108 +371,20 @@ async function handleEvent(event) {
         if (handledCommands.has(messageEventId)) return;
         let message;
         try {
-            ({ message } = await rpc('chatto.api.v1.MessageService', 'GetMessage', { roomId, eventId: messageEventId }));
+            message = await server.getMessage({ roomId, messageId: messageEventId });
         } catch (error) {
             console.warn('Bearbeitete Nachricht nicht lesbar:', error.message);
             return;
         }
-        if (!message || message.deletedAt) return;
+        if (!message) return;
         return runCommand({
             eventId: message.id,
             roomId,
-            threadRootEventId: message.threadRootEventId,
-            sender: message.actorId,
+            threadRootEventId: message.threadRootId,
+            sender: message.authorId,
             body: message.body
         });
     }
-}
-
-function scheduleReconnect(delayMs) {
-    if (stopped) return;
-    const backoff = Math.min(MAX_RECONNECT_MS, 1000 * 2 ** reconnectAttempt++);
-    setTimeout(connect, Math.max(delayMs || 0, backoff));
-}
-
-function connect() {
-    if (stopped) return;
-    const wsUrl = chattoUrl.replace(/^http/, 'ws') + '/api/realtime';
-    const socket = new WebSocket(wsUrl);
-    socket.binaryType = 'arraybuffer';
-    let lastFrameAt = Date.now();
-    let closed = false;
-    let retryAfterMs = 0;
-
-    const watchdog = setInterval(() => {
-        if (Date.now() - lastFrameAt >= HEARTBEAT_STALL_MS) {
-            console.warn('⚠️  Kein Heartbeat – verbinde neu');
-            socket.close();
-        }
-    }, 5_000);
-
-    socket.addEventListener('open', () => {
-        const subscribe = new RealtimeSubscribe({
-            protocolVersion: PROTOCOL_VERSION,
-            bearerToken: apiKey,
-            initialState: RealtimeInitialState.LIVE_ONLY,
-            resumeCursor
-        });
-        socket.send(subscribe.toBinary());
-    });
-
-    socket.addEventListener('message', (msg) => {
-        lastFrameAt = Date.now();
-        let frame;
-        try {
-            frame = RealtimeServerFrame.fromBinary(new Uint8Array(msg.data));
-        } catch (error) {
-            console.error('Realtime-Frame nicht lesbar:', error.message);
-            socket.close();
-            return;
-        }
-
-        processing = processing.then(async () => {
-            switch (frame.frame.case) {
-                case 'event':
-                    await handleEvent(frame.frame.value);
-                    if (frame.frame.value.cursor) resumeCursor = frame.frame.value.cursor;
-                    break;
-                case 'heartbeat':
-                    if (frame.frame.value.cursor) resumeCursor = frame.frame.value.cursor;
-                    break;
-                case 'caughtUp':
-                    resumeCursor = frame.frame.value.cursor;
-                    reconnectAttempt = 0;
-                    console.log('🔌 Realtime verbunden');
-                    break;
-                case 'close': {
-                    const close = frame.frame.value;
-                    console.warn(`Realtime geschlossen: ${close.message} (code ${close.code})`);
-                    if (!close.reconnect) {
-                        console.error('❌ Server verweigert Reconnect – API-Key prüfen. Beende in 60s.');
-                        stopped = true;
-                        setTimeout(() => process.exit(1), 60_000);
-                    }
-                    if (close.retryAfter) {
-                        retryAfterMs = Number(close.retryAfter.seconds) * 1000 + close.retryAfter.nanos / 1e6;
-                    }
-                    socket.close();
-                    break;
-                }
-            }
-        }).catch(error => console.error('Realtime-Verarbeitung fehlgeschlagen:', error.message));
-    });
-
-    const onClose = () => {
-        if (closed) return;
-        closed = true;
-        clearInterval(watchdog);
-        scheduleReconnect(retryAfterMs);
-    };
-    socket.addEventListener('close', onClose);
-    socket.addEventListener('error', (e) => {
-        console.warn('Realtime-Fehler:', e.message || e.type);
-        onClose();
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -521,13 +394,12 @@ function connect() {
 async function startBot() {
     for (let attempt = 1; ; attempt++) {
         try {
-            const viewer = await rpc('chatto.api.v1.ViewerService', 'GetViewer');
-            botUserId = viewer.user?.profile?.id;
-            if (!botUserId) throw new Error('Viewer-Antwort ohne user.profile.id');
+            ({ viewerId: botUserId } = await server.ready());
             break;
         } catch (error) {
+            if (server.sessionEnded) throw new Error('Server lehnt den API-Key ab');
             console.error(`❌ Anmeldung fehlgeschlagen (Versuch ${attempt}):`, error.message);
-            await new Promise(r => setTimeout(r, Math.min(MAX_RECONNECT_MS, 2000 * attempt)));
+            await sleep(Math.min(MAX_RETRY_MS, 2000 * attempt));
         }
     }
 
@@ -538,15 +410,24 @@ async function startBot() {
     console.log(`   3D-Würfel: ${dice3d ? 'an' : 'aus'}`);
     console.log(`   Befehle löschen: ${deleteCommands ? 'an' : 'aus'}`);
     console.log(`   Makros: ${Object.keys(macros).join(', ') || 'keine'}`);
-    connect();
+    // Ereignisse kommen der Reihe nach; Reconnect und Resume erledigt der Client
+    await server.consumeEvents({
+        onEvent: (event) => handleEvent(event).catch(error => console.error('Realtime-Verarbeitung fehlgeschlagen:', error.message)),
+        onStatus: (status) => {
+            if (status.state === 'ready') console.log(`🔌 Realtime verbunden${status.gap ? ' (Ereignisse können fehlen)' : ''}`);
+            else if (status.state === 'reconnecting') console.warn('⚠️  Realtime getrennt – verbinde neu');
+        }
+    });
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
         console.log('\n🛑 Beende Bot...');
-        stopped = true;
-        process.exit(0);
+        client.close();
     });
 }
 
-startBot();
+startBot().catch((error) => {
+    console.error('❌', error.message);
+    process.exitCode = 1;
+}).finally(() => client.close());

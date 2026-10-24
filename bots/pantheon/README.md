@@ -1,15 +1,13 @@
 # 🎲 Pantheon — Würfel-Bot für Chatto (Daggerheart, Savage Worlds, freies Würfeln)
 
-- `bot.mjs` – Anbindung an Chatto und Commands.
-  - **Eingang:** Realtime-WebSocket (`/api/realtime`, Protokoll 4, `LIVE_ONLY`). Der Bot sieht alle
-    Nachrichten in Räumen, in denen er Mitglied ist und `message.read` hat, und reagiert auf `!…`.
-  - **Ausgang:** `MessageService/CreateMessage` per ConnectRPC-JSON (Markdown), als Antwort auf die
-    auslösende Nachricht (im selben Thread). `@` wird escaped, damit der Bot niemanden anpingt.
+- `bot.mjs` – Anbindung an Chatto und Commands, über den offiziellen Client [`@chatto/client`](https://www.npmjs.com/package/@chatto/client).
+  - **Eingang:** Realtime-Ereignisse (`consumeEvents`; Reconnect und Resume macht der Client). Der Bot
+    sieht alle Nachrichten in Räumen, in denen er Mitglied ist und `message.read` hat, und reagiert auf `!…`.
+  - **Ausgang:** `createMessage` (Markdown), als Antwort auf die auslösende Nachricht (im selben
+    Thread). `@` wird escaped, damit der Bot niemanden anpingt.
 - `rolls.mjs` – Würfelregeln und Hilfetexte.
 - `storage.mjs` – `storage/state.json`: GM-Modus pro User, Spielsystem pro Raum.
 - `avatar.svg` / `avatar.png` – Profilbild (in Chatto beim Bot hochladen).
-- `gen/` – Protobuf-Bindings für das Realtime-Protokoll (nur der Realtime-Proto und seine Imports;
-  der WebSocket spricht ausschließlich binäres Protobuf).
 
 ## Commands
 
@@ -91,25 +89,7 @@ Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marke
 
 Lokal gegen den Dev-Server: `npm ci && CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs`.
 
-## Protobuf-Bindings neu erzeugen
+## Chatto-Update
 
-Nötig, wenn sich bei einem Chatto-Update das Realtime-Protokoll ändert:
-
-```sh
-npm i --no-save @bufbuild/protoc-gen-es@1.10.1 @bufbuild/buf
-git -C ../../upstream archive HEAD proto | tar -x
-rm -rf gen && npx buf generate proto --template buf.gen.yaml --path proto/chatto/realtime
-rm -rf proto buf.gen.yaml && echo '{ "type": "module" }' > gen/package.json
-```
-
-Das erzeugt zusätzlich ein paar Dateien, die der Bot nicht lädt (z. B. `buf/validate/`); sie
-können weg. `buf.gen.yaml` (`include_imports` erzeugt auch die importierten API-Protos):
-
-```yaml
-version: v2
-plugins:
-  - local: node_modules/.bin/protoc-gen-es
-    out: gen
-    include_imports: true
-    opt: [target=js, import_extension=.js]
-```
+`@chatto/client` ist exakt gepinnt. Ändert sich bei einem Chatto-Update das Realtime-Protokoll,
+meldet der Client den Server als nicht unterstützt; dann `npm i --save-exact @chatto/client@latest`.

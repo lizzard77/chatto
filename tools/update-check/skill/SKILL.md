@@ -26,8 +26,8 @@ Alles erledigt. Schreib nur die Nachricht:
 `✅ Chatto <NEW>: Patches angepasst, Build + Typecheck grün, Image gebaut (<COMMIT>), Compose-Tag gesetzt.`
 - 3–5 Stichpunkte aus `upstream/CHANGELOG.md` für die Versionen nach `OLD` bis `NEW` (Breaking Changes zuerst).
 - Was sich an den Patches inhaltlich geändert hat (`PATCH_DIFF`; z. B. angehobenes Bundle-Budget), sonst „Patches unverändert“.
-- Ist `PROTO_DIFF` nicht „keine“: deutlicher Hinweis, dass die Pantheon-Bindings in `bots/pantheon/gen/`
-  neu erzeugt werden müssen (`bots/pantheon/README.md`) – nicht selbst machen.
+- Ist `PROTO_DIFF` nicht „keine“: deutlicher Hinweis, dass Pantheon und Erato evtl. ein neueres
+  `@chatto/client` brauchen (`bots/pantheon/README.md`, Abschnitt Chatto-Update) – nicht selbst machen.
 - Letzte Zeile: `Deploy: auf he1 in he1/chatto → docker compose pull chatto && docker compose up -d chatto`
 
 ## STATUS: conflict oder build-failed

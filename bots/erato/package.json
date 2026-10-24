@@ -13,6 +13,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@chatto/client": "0.1.1",
     "@livekit/rtc-node": "^1.1.0",
     "dbus-next": "^0.10.2"
   }

@@ -11,6 +11,9 @@
  * Nur die Hauptzeitleiste der Räume; Befehle in Threads bleiben stehen.
  */
 
+import { createApi } from '@chatto/client';
+import { MessageService, RoomDirectoryService, RoomService } from '@chatto/client/types';
+
 const chattoUrl = (process.env.CHATTO_URL || 'http://chatto:4000').replace(/\/$/, '');
 const apiKey = process.env.CHATTO_API_KEY;
 const prefix = process.env.COMMAND_PREFIX || '!';
@@ -22,36 +25,23 @@ if (!apiKey) {
     process.exit(1);
 }
 
-async function rpc(service, method, body = {}) {
-    const res = await fetch(`${chattoUrl}/api/connect/chatto.api.v1.${service}/${method}`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Connect-Protocol-Version': '1'
-        },
-        body: JSON.stringify(body)
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${service}/${method} → HTTP ${res.status}: ${text}`);
-    return text ? JSON.parse(text) : {};
-}
+const api = createApi({ serverUrl: chattoUrl, apiKey });
+const messageService = api.service(MessageService);
 
 const escapeMarkdown = (text) => text.replace(/[\\`*_~[\]()#>|]/g, '\\$&');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function memberRooms() {
     const rooms = [];
-    let page;
-    do {
-        const res = await rpc('RoomDirectoryService', 'ListRooms', page ? { page } : {});
-        for (const entry of res.rooms ?? []) {
+    for (let offset = 0; ; offset += 100) {
+        const res = await api.service(RoomDirectoryService).listRooms({ page: { limit: 100, offset } });
+        for (const entry of res.rooms) {
             if (!entry.viewerState?.isMember) continue;
-            const granted = new Set((entry.viewerState.permissions ?? []).filter(p => p.granted).map(p => p.permission));
+            const granted = new Set(entry.viewerState.permissions.filter(p => p.granted).map(p => p.permission));
             rooms.push({ id: entry.room.id, name: entry.room.name, canManage: granted.has('message.manage') });
         }
-        page = res.page?.nextPageToken ? { pageToken: res.page.nextPageToken } : null;
-    } while (page);
+        if (!res.page?.hasMore) break;
+    }
     return rooms;
 }
 
@@ -61,22 +51,21 @@ async function roomMessages(roomId) {
     const users = {};
     let before;
     for (;;) {
-        const { page } = await rpc('RoomService', 'GetRoomEvents', { roomId, limit: 500, ...(before ? { before } : {}) });
+        const { page } = await api.service(RoomService).getRoomEvents({
+            roomId, limit: 500, cursor: before ? { case: 'before', value: before } : undefined
+        });
         Object.assign(users, page?.includes?.users ?? {});
-        for (const event of page?.events ?? []) {
-            const message = event.messagePosted?.message;
-            if (message) messages.push(message);
+        for (const { event } of page?.events ?? []) {
+            if (event.case === 'messagePosted' && event.value.message) messages.push(event.value.message);
         }
         if (!page?.hasOlder || !page.startCursor) break;
         before = page.startCursor;
     }
-    messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    messages.sort((a, b) => a.createdAt.toDate() - b.createdAt.toDate());
     return { messages, users };
 }
 
-const viewer = await rpc('ViewerService', 'GetViewer');
-const botId = viewer.user?.profile?.id;
-if (!botId) throw new Error('Viewer-Antwort ohne user.profile.id');
+const { viewerId: botId } = await api.ready();
 
 console.log(apply ? '⚠️  APPLY: Nachrichten werden gelöscht und bearbeitet' : '🔍 Probelauf – es wird nichts geändert');
 let totalDeleted = 0;
@@ -118,15 +107,15 @@ for (const room of await memberRooms()) {
         const tag = name ? `**${escapeMarkdown(name)}** ` : '';
         // Mehrfach ausgeführt bleibt das Ergebnis gleich
         if (tag && !reply.body.startsWith(tag)) {
-            await rpc('MessageService', 'UpdateMessage', {
-                roomId: room.id, eventId: reply.id, body: tag + reply.body, updateMask: 'body'
+            await messageService.updateMessage({
+                roomId: room.id, eventId: reply.id, body: tag + reply.body, updateMask: { paths: ['body'] }
             });
             totalEdited++;
             await sleep(50);
         }
     }
     for (const id of commandIds) {
-        await rpc('MessageService', 'DeleteMessage', { roomId: room.id, eventId: id });
+        await messageService.deleteMessage({ roomId: room.id, eventId: id });
         totalDeleted++;
         await sleep(50);
     }

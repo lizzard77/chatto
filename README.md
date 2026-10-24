@@ -73,8 +73,8 @@ scripts/export-patches.sh 0.5.0-beta.13
 echo 0.5.0-beta.13 > CHATTO_VERSION    # commit + push → the action builds the image
 ```
 
-Then point your deployment at the new image tag. If the realtime or message protos changed,
-regenerate Pantheon's `gen/` (see `bots/pantheon/README.md`).
+Then point your deployment at the new image tag. If the realtime protocol changed, bump
+`@chatto/client` in `bots/pantheon` and `bots/erato`.
 
 ## Patches
 
