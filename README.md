@@ -22,9 +22,11 @@ to the version in `CHATTO_VERSION` with all patches applied as commits.
 
 ```sh
 scripts/upstream.sh            # upstream/ = tag v$(cat CHATTO_VERSION) + patches as commits
-scripts/dev.sh                 # build and start a local server on http://localhost:4400
+scripts/dev.sh                 # build and start a local server on http://localhost:4400, with LiveKit for calls
 scripts/dev.sh --reset         # same with fresh data (test users alice/bob from upstream/cli/chatto.toml)
 scripts/dev.sh --no-build      # start only
+scripts/dev-bots.sh pantheon   # set up the dev bots if needed and run Pantheon (or: erato)
+scripts/dev-chat.mjs post general '!r 2d6'   # post/edit/list/dm as alice (AS=bob) to test the bots
 scripts/build.sh --check       # build only, plus svelte-check
 scripts/export-patches.sh      # write the commits in upstream/ back to patches/
 ```
@@ -34,12 +36,23 @@ Workflow: change and commit in `upstream/` (one commit per patch; fix an existin
 `scripts/export-patches.sh`, commit here and push.
 
 Requirements: git, Go (version in `upstream/mise.toml`), Node 24 (used through `fnm` when installed);
-pnpm is fetched with `npx`. The dev server listens on `CHATTO_DEV_PORT` (default 4400) and keeps its
-data in `.dev/`.
+pnpm is fetched with `npx`; ffmpeg for Erato. The dev server listens on `CHATTO_DEV_PORT` (default 4400;
+NATS +4, LiveKit +5, LiveKit UDP +6). Everything local lives in `.dev/` (gitignored, survives
+`--reset` except for the data and bot keys):
 
-Running Pantheon against the dev server: create a bot under *Server Admin → Bots* in the dev
-instance, then
-`cd bots/pantheon && npm ci && CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs`.
+| Path | |
+|---|---|
+| `.dev/data/` | server data (NATS, search index) |
+| `.dev/bin/livekit-server` | built with `go install` on the first start, version from `upstream/mise.toml` |
+| `.dev/livekit.yaml` | LiveKit config, rewritten by `dev.sh` on every start (key/secret also passed to Chatto) |
+| `.dev/bots.env` | API keys of the dev bots `pantheon` and `erato` |
+| `.dev/tone.ogg` | test tone Erato streams by default |
+
+`scripts/dev-bots.sh` logs in as alice, creates the bots `pantheon` and `erato`, grants them the
+permissions they need server-wide, joins them to `#general` and writes `.dev/bots.env`; it redoes
+this whenever the stored keys stop working (fresh server). `scripts/dev-bots.sh erato [<file>]`
+streams the test tone into the call of `#general`, with DM control for alice, ignoring the extra
+sources from `bots/erato/.env`.
 
 ## Images and deployment
 

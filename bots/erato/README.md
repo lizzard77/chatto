@@ -32,6 +32,9 @@ he1), weil Musik und Fenster vom eigenen Rechner kommen.
 4. `npm i`, dann `npm start` oder `node erato.mjs` (benötigt `ffmpeg` und `pactl`). Die `.env` neben
    `erato.mjs` wird immer geladen, auch aus einem anderen Verzeichnis; Shell-Variablen haben Vorrang. Beenden mit Ctrl+C.
 
+Lokal gegen den Dev-Server: `scripts/dev-bots.sh erato [<datei>]` (legt den Bot dort bei Bedarf an,
+streamt einen Testton in den Call von `#general`, DM-Steuerung für alice).
+
 ## Fenster teilen
 
 In der Konsole von Erato oder aus einem anderen Terminal:

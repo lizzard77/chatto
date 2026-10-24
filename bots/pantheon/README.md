@@ -87,7 +87,7 @@ Ergebnis-Banner (`;sw=`). Mit `DICE_3D=false` in `.env` lässt der Bot den Marke
 4. Image kommt aus GHCR (`ghcr.io/lizzard77/chatto-pantheon`, gebaut von `.github/workflows/images.yml`);
    `storage/` als Volume mounten.
 
-Lokal gegen den Dev-Server: `npm ci && CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs`.
+Lokal gegen den Dev-Server: `scripts/dev-bots.sh pantheon` (legt den Bot dort bei Bedarf an).
 
 ## Chatto-Update
 

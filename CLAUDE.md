@@ -28,10 +28,14 @@ Rebasing onto a new upstream release: `scripts/upstream.sh <new>` → resolve co
 ```sh
 scripts/build.sh            # pnpm install, build frontend, embed it, go build → upstream/cli/bin/chatto
 scripts/build.sh --check    # additionally svelte-check (only meaningful after the frontend build)
-scripts/dev.sh              # build + run on http://localhost:${CHATTO_DEV_PORT:-4400}, data in .dev/
+scripts/dev.sh              # build + run on http://localhost:${CHATTO_DEV_PORT:-4400} with LiveKit (calls), state in .dev/
 scripts/dev.sh --no-build   # run only
-scripts/dev.sh --reset      # wipe .dev/ → fresh server with test users alice/bob (passwords in upstream/cli/chatto.toml)
+scripts/dev.sh --reset      # wipe .dev/data + .dev/bots.env → fresh server with test users alice/bob (password foobar123, upstream/cli/chatto.toml)
+scripts/dev-bots.sh [pantheon|erato]   # create/refresh dev bots (keys in .dev/bots.env), optionally run one against the dev server
+scripts/dev-chat.mjs post|edit|list|dm …   # act as alice (AS=bob) via the API, e.g. `post general '!r 2d6'`, `list general 5`
 ```
+
+Dev setup lives in `.dev/` (gitignored, details in README.md → Development): `data/`, `bin/livekit-server` (built once via `go install`), `livekit.yaml`, `bots.env`, `tone.ogg`. To test bot changes end to end: `scripts/dev.sh --no-build` (background) → `scripts/dev-bots.sh pantheon` (background) → drive it with `scripts/dev-chat.mjs`. Admin API calls need privileged mode first (`ViewerService/ActivatePrivilegedMode`); admin services are `chatto.admin.v1.Admin*Service` under `/api/connect/`.
 
 `scripts/lib.sh` wraps `pnpm`: it runs the version pinned in `upstream/mise.toml` via `npx`, under Node 24 through `fnm` if installed. Go version also comes from `upstream/mise.toml`.
 
@@ -59,7 +63,7 @@ Fork features communicate through **marker links in message bodies** rather than
 
 Plain Node ESM, no build step, `npm ci` + `node`.
 
-- `pantheon/` — dice bot for Daggerheart, Savage Worlds and plain rolls (`!system dh|swade|raw` per room, `!gm`/`!dm` per user, `!dice` in a thread = the room's dice thread that all rolls go to, `!purge` (anyone) deletes all `!…` messages and all bot messages, in the room and its threads; human messages, including thread roots, stay). `bot.mjs` = transport + command dispatch via the official `@chatto/client` (npm, pinned exactly; `consumeEvents` in, `createMessage`/`server.service(...)` out, Markdown with `@` escaped); `rolls.mjs` = dice rules returning `{ text, dice, swade }`; `initiative.mjs` = SWADE action deck for `!ini` (state per room); `storage.mjs` = `storage/state.json` (gitignored). Replies carry the dice marker unless `DICE_3D=false`. With `DELETE_COMMANDS` (default on) the bot deletes the `!…` command after replying and prefixes the reply with the sender's display name (needs `message.manage`). Run against the dev server: `CHATTO_URL=http://localhost:4400 CHATTO_API_KEY=… node bot.mjs` (create the bot under Server Admin → Bots).
+- `pantheon/` — dice bot for Daggerheart, Savage Worlds and plain rolls (`!system dh|swade|raw` per room, `!gm`/`!dm` per user, `!dice` in a thread = the room's dice thread that all rolls go to, `!purge` (anyone) deletes all `!…` messages and all bot messages, in the room and its threads; human messages, including thread roots, stay). `bot.mjs` = transport + command dispatch via the official `@chatto/client` (npm, pinned exactly; `consumeEvents` in, `createMessage`/`server.service(...)` out, Markdown with `@` escaped); `rolls.mjs` = dice rules returning `{ text, dice, swade }`; `initiative.mjs` = SWADE action deck for `!ini` (state per room); `storage.mjs` = `storage/state.json` (gitignored). Replies carry the dice marker unless `DICE_3D=false`. With `DELETE_COMMANDS` (default on) the bot deletes the `!…` command after replying and prefixes the reply with the sender's display name (needs `message.manage`). Run against the dev server: `scripts/dev-bots.sh pantheon`.
 - `erato/` — runs locally only; asks for the channel at start (one instance per PC and channel, the control socket `$XDG_RUNTIME_DIR/erato-<roomId>.sock` is the lock), joins its call via `VoiceCallService/JoinCall` + LiveKit (`@livekit/rtc-node`) and streams a PipeWire/Pulse virtual sink or a file. `share` (console or `node erato.mjs ctl share`) sends a desktop window as Erato's screen-share track (camera with `ERATO_VIDEO_AS=camera`; Chatto crops camera tiles): `share.mjs` picks the backend, on Wayland `share-portal.mjs` does the ScreenCast portal via `dbus-next` (no Python) and runs `gst-launch-1.0` with `pipewiresrc target-object=<object.serial>` (no portal fd needed); it computes scaling/borders itself (pipewiresrc reports a bogus pixel aspect ratio) and restarts gst-launch when the window size changes (polled via `pw-dump`), elsewhere ffmpeg. Chatto access via `@chatto/client`; commands also via Chatto DM from `ERATO_DM_USERS` (realtime, `server.run` with reason `direct_message`; with several instances on one PC only the addressed one answers). Needs `ffmpeg` and `pactl`; one bot account per GM.
 
 ## CI / images
