@@ -22,7 +22,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  10 files changed, 130 insertions(+), 13 deletions(-)
 
 diff --git a/apps/frontend/messages/de-DE/settings.json b/apps/frontend/messages/de-DE/settings.json
-index 56a085006..c8ebdf1f4 100644
+index 21e0efdd6..0fb62c063 100644
 --- a/apps/frontend/messages/de-DE/settings.json
 +++ b/apps/frontend/messages/de-DE/settings.json
 @@ -216,6 +216,13 @@
@@ -60,7 +60,7 @@ index 56a085006..c8ebdf1f4 100644
        "contrast": {
          "label": "Kontrast",
 diff --git a/apps/frontend/messages/en-GB/settings.json b/apps/frontend/messages/en-GB/settings.json
-index dd7bd9a10..5a3f2b2ae 100644
+index e04bb06d3..490221e8e 100644
 --- a/apps/frontend/messages/en-GB/settings.json
 +++ b/apps/frontend/messages/en-GB/settings.json
 @@ -216,6 +216,13 @@

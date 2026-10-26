@@ -146,7 +146,7 @@ index 6cc038d06..9c96023b8 100644
    {:then html}
      <MarkdownHtml {html} />
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index 6a08c1142..ec4611c66 100644
+index 0bce99309..cad796f01 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 @@ -22,6 +22,8 @@
@@ -254,10 +254,10 @@ index 000000000..a719ca5b2
 +  {/snippet}
 +</AutocompletePopup>
 diff --git a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-index aa0b64c83..27026c7e3 100644
+index 3cb105b85..798b029d0 100644
 --- a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
 +++ b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-@@ -378,6 +378,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
+@@ -397,6 +397,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
          tick().then(syncControls);
        },
  
@@ -401,7 +401,7 @@ index 8eda4f50a..56638c52d 100644
      return rankMentionCandidates(
        partial,
 diff --git a/apps/frontend/src/lib/components/composer/editorTypes.ts b/apps/frontend/src/lib/components/composer/editorTypes.ts
-index 61fc9e983..71034a19d 100644
+index 4a6487dd5..ccd364c29 100644
 --- a/apps/frontend/src/lib/components/composer/editorTypes.ts
 +++ b/apps/frontend/src/lib/components/composer/editorTypes.ts
 @@ -47,6 +47,11 @@ export type ComposerEditorApi = {
@@ -458,7 +458,7 @@ index fc106556f..3714a305e 100644
  
        for (const url of urls) {
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 0e3c1bb53..573cc2cc9 100644
+index dc4a662c9..2d604f0fb 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
@@ -500,7 +500,7 @@ index 0e3c1bb53..573cc2cc9 100644
      );
      this.submission = new ComposerSubmissionState({
        getAPI: dependencies.getMessageAPI,
-@@ -382,6 +390,9 @@ export class MessageComposerState {
+@@ -398,6 +406,9 @@ export class MessageComposerState {
      if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
        return true;
      }

@@ -31,10 +31,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 
 diff --git a/apps/frontend/messages/de-DE/composer.json b/apps/frontend/messages/de-DE/composer.json
-index ea3adf5b0..31c22b98f 100644
+index 58a2412dc..ed156f820 100644
 --- a/apps/frontend/messages/de-DE/composer.json
 +++ b/apps/frontend/messages/de-DE/composer.json
-@@ -73,6 +73,29 @@
+@@ -76,6 +76,29 @@
        "all_room_members": "Alle Raummitglieder",
        "members_here": "Gerade anwesende Mitglieder",
        "role": "Rolle"
@@ -65,10 +65,10 @@ index ea3adf5b0..31c22b98f 100644
    }
  }
 diff --git a/apps/frontend/messages/en-GB/composer.json b/apps/frontend/messages/en-GB/composer.json
-index 10bb6be57..6f23e4daf 100644
+index 20a4c633d..f50d0dfa9 100644
 --- a/apps/frontend/messages/en-GB/composer.json
 +++ b/apps/frontend/messages/en-GB/composer.json
-@@ -73,6 +73,29 @@
+@@ -76,6 +76,29 @@
        "all_room_members": "All room members",
        "members_here": "Members currently here",
        "role": "Role"
@@ -415,7 +415,7 @@ index c5ae3ef79..b6f195f8e 100644
    </div>
  
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index ec4611c66..f8304e1df 100644
+index cad796f01..6f85a0794 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 @@ -6,6 +6,7 @@
@@ -444,7 +444,7 @@ index ec4611c66..f8304e1df 100644
    });
  
    let expandedDraft = $state(false);
-@@ -412,6 +415,7 @@
+@@ -413,6 +416,7 @@
            onToggleAlsoSendToChannel={() =>
              (composer.alsoSendToChannel = !composer.alsoSendToChannel)}
            onsubmit={() => composer.submit()}
@@ -453,7 +453,7 @@ index ec4611c66..f8304e1df 100644
        </div>
      </div>
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 573cc2cc9..6b9a909eb 100644
+index 2d604f0fb..5975a93a9 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -1,4 +1,5 @@
@@ -471,7 +471,7 @@ index 573cc2cc9..6b9a909eb 100644
  };
  
  export function bodyForSend(text: string): string {
-@@ -622,6 +625,14 @@ export class MessageComposerState {
+@@ -638,6 +641,14 @@ export class MessageComposerState {
      const bodyToSend = bodyForSend(this.message);
      const filesToSend = this.hasSendableAttachments ? [...this.attachments.selectedFiles] : null;
      if (!hasVisibleContent(bodyToSend) && !filesToSend) return;

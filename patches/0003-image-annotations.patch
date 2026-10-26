@@ -25,7 +25,7 @@ the image's author, so they cause no thread notifications by themselves.
  .../lib/annotations/AnnotationLayer.svelte    | 324 ++++++++++++++++++
  .../lib/annotations/AnnotationToolbar.svelte  | 109 ++++++
  .../src/lib/annotations/annotationSpec.ts     | 180 ++++++++++
- .../annotations/imageAnnotations.svelte.ts    | 246 +++++++++++++
+ .../annotations/imageAnnotations.svelte.ts    | 242 +++++++++++++
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
  apps/frontend/src/lib/markdown.ts             |  23 ++
  .../src/lib/ui/AttachmentPreview.svelte       |  12 +-
@@ -34,7 +34,7 @@ the image's author, so they cause no thread notifications by themselves.
  cli/internal/core/image_annotations.go        |  22 ++
  cli/internal/core/image_annotations_test.go   |  23 ++
  cli/internal/core/messages.go                 |   3 +-
- 14 files changed, 1112 insertions(+), 10 deletions(-)
+ 14 files changed, 1108 insertions(+), 10 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/annotations.json
  create mode 100644 apps/frontend/messages/en-GB/annotations.json
  create mode 100644 apps/frontend/src/lib/annotations/AnnotationLayer.svelte
@@ -719,10 +719,10 @@ index 000000000..5ae32de3b
 +}
 diff --git a/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts b/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
 new file mode 100644
-index 000000000..7958a46c7
+index 000000000..713cd2407
 --- /dev/null
 +++ b/apps/frontend/src/lib/annotations/imageAnnotations.svelte.ts
-@@ -0,0 +1,246 @@
+@@ -0,0 +1,242 @@
 +/**
 + * Annotations of one image in the attachment viewer: reads them from the
 + * thread of the image message, keeps them live, and posts or retracts the
@@ -793,7 +793,6 @@ index 000000000..7958a46c7
 +      target.eventId;
 +    if (!this.#stores) return;
 +    this.#thread = this.#stores.rooms.thread(target.roomId, this.#threadRootEventId);
-+    this.#stores.rooms.retainThread(target.roomId, this.#threadRootEventId, this.#thread);
 +    void this.#loadAll();
 +  }
 +
@@ -813,9 +812,6 @@ index 000000000..7958a46c7
 +
 +  dispose(): void {
 +    this.#disposed = true;
-+    if (this.#stores && this.#thread) {
-+      this.#stores.rooms.releaseThread(this.#target.roomId, this.#threadRootEventId, this.#thread);
-+    }
 +  }
 +
 +  get viewerId(): string | null {
@@ -1361,10 +1357,10 @@ index 000000000..ef65dd4ad
 +	}
 +}
 diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
-index 94ecfcaa4..e371803b1 100644
+index 18ef9ad06..d782a8191 100644
 --- a/cli/internal/core/messages.go
 +++ b/cli/internal/core/messages.go
-@@ -890,7 +890,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
+@@ -917,7 +917,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
  	// Reply count / participants / lastReplyAt are derived live from
  	// ThreadProjection now, so no KV write — but we still need the
  	// root author for the auto-follow logic below.

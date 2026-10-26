@@ -15,10 +15,10 @@ Subject: [PATCH] Frontend: embed sidebar links in an iframe
  create mode 100644 apps/frontend/src/routes/chat/[serverId]/embed/[linkId]/+page.svelte
 
 diff --git a/apps/frontend/messages/de-DE/room.json b/apps/frontend/messages/de-DE/room.json
-index b7c8a8e36..014086286 100644
+index e4e8c2d75..c990537b7 100644
 --- a/apps/frontend/messages/de-DE/room.json
 +++ b/apps/frontend/messages/de-DE/room.json
-@@ -292,6 +292,10 @@
+@@ -300,6 +300,10 @@
        "label": "Beschriftung",
        "url": "URL",
        "link_url_placeholder": "https://docs.example.com oder /docs",
@@ -30,10 +30,10 @@ index b7c8a8e36..014086286 100644
        "delete_link_prompt": "Bist du sicher, dass du {label} löschen möchtest?",
        "archive_room": "Raum archivieren",
 diff --git a/apps/frontend/messages/en-GB/room.json b/apps/frontend/messages/en-GB/room.json
-index d0efc9c8f..728448918 100644
+index 102cc21e2..4be9aa631 100644
 --- a/apps/frontend/messages/en-GB/room.json
 +++ b/apps/frontend/messages/en-GB/room.json
-@@ -292,6 +292,10 @@
+@@ -300,6 +300,10 @@
        "label": "Label",
        "url": "URL",
        "link_url_placeholder": "https://docs.example.com or /docs",
@@ -45,7 +45,7 @@ index d0efc9c8f..728448918 100644
        "delete_link_prompt": "Are you sure you want to delete {label}?",
        "archive_room": "Archive room",
 diff --git a/apps/frontend/src/lib/RoomList.svelte b/apps/frontend/src/lib/RoomList.svelte
-index c2b0283e4..948d4be7b 100644
+index 42d575cdc..d2617bdb8 100644
 --- a/apps/frontend/src/lib/RoomList.svelte
 +++ b/apps/frontend/src/lib/RoomList.svelte
 @@ -26,6 +26,11 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
@@ -94,7 +94,7 @@ index c2b0283e4..948d4be7b 100644
      if (!label || !url) return;
      try {
        if (editingLinkId) {
-@@ -1166,11 +1174,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1171,11 +1179,21 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
        {@render navigationRoomLink(room)}
      {/if}
    {:else}
@@ -118,7 +118,7 @@ index c2b0283e4..948d4be7b 100644
        aria-disabled={!target.valid}
        class={[
          'group/link sidebar-item w-full text-start',
-@@ -1193,7 +1211,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1198,7 +1216,8 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
          <span
            aria-hidden="true"
            class={[
@@ -128,7 +128,7 @@ index c2b0283e4..948d4be7b 100644
              showDragHandle ? 'group-focus-within/link:opacity-0 group-hover/link:opacity-0' : ''
            ]}
          ></span>
-@@ -1511,7 +1530,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1516,7 +1535,7 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
  {/if}
  
  {#if linkDialogVisible}
@@ -137,7 +137,7 @@ index c2b0283e4..948d4be7b 100644
      <FormDialogModule.default
        bind:visible={linkDialogVisible}
        title={editingLinkId ? m('room.management.edit_link') : m('room.management.create_link')}
-@@ -1533,6 +1552,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
+@@ -1538,6 +1557,12 @@ rooms are organized into collapsible sections. Otherwise, rooms display alphabet
          bind:value={linkUrl}
          placeholder={m('room.management.link_url_placeholder')}
        />

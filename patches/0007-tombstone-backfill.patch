@@ -16,10 +16,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  1 file changed, 7 insertions(+)
 
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
-index de2ab1ff9..03eb1f185 100644
+index 91341d581..1713f5d3f 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/EventList.svelte
-@@ -783,12 +783,17 @@
+@@ -801,12 +801,17 @@
      }
  
      underfilledBackfillInFlight = true;
@@ -37,7 +37,7 @@ index de2ab1ff9..03eb1f185 100644
          return;
        }
  
-@@ -813,9 +818,11 @@
+@@ -831,9 +836,11 @@
          messageEventCount < INITIAL_ROOM_MESSAGE_BACKFILL_TARGET;
        if (scrollSize <= viewportSize + 50 || lacksInitialRoomMessages) {
          await loadOlder(messageStore);
