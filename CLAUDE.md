@@ -50,8 +50,10 @@ Known expected failures with the patches applied: upstream's `catalogs.spec.ts` 
 
 - `0005-room-links` — `#name` autocomplete in the composer inserts a plain room link; rendered room links become chips with the current room name, or "unknown room" without access; room links to the same server get no link preview in the composer. Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 - `0006-dice-tray` — composer 🎲 button with a flyout (d4–d100, modifier, duality) that posts `!r …` for Pantheon, plus a results card above the room composer (latest roll; per player for GMs, detected from `;gm=1` on the viewer's own rolls). Opens empty; SWADE rooms get a "With Wild Die" toggle (`!r wild|extra d8`), Daggerheart rooms a disadvantage/normal/advantage switch for the duality roll (`!r adv|dis`); a typed `!r …` that the tray can show opens the tray prefilled instead of posting (macros, `kh`, `dmg` still post). Code in `apps/frontend/src/lib/diceTray/`. Frontend only.
-- `0007-tombstone-backfill` — upstream fix in `EventList.svelte`: a room whose newest page is only deleted messages kept backfilling after a reload (race with the in-flight flag). Frontend only.
-- `0008-deleted-threads` — upstream fix: the Threads page omits followed threads whose root is deleted and that have no replies left (the room-timeline part is fixed upstream since 0.5.0-beta.21, #3132). Frontend only.
+- `0007-tombstone-backfill` — upstream fix in `EventList.svelte`: a room whose newest page is only deleted messages kept backfilling after a reload (race with the in-flight flag). Frontend only. Reported upstream 2026-10-26.
+- `0008-deleted-threads` — upstream fix: the Threads page omits followed threads whose root is deleted and that have no replies left (the room-timeline part is fixed upstream since 0.5.0-beta.21, #3132). Frontend only. Reported upstream 2026-10-26.
+
+0007 and 0008 are meant to disappear: once upstream fixes the bug, drop the patch (`git am --skip` while rebasing, or `git rebase` it out of `upstream/`), export and update this list and README.md. `export-patches.sh` matches file names by subject, so the remaining patches keep their names.
 
 Fork features communicate through **marker links in message bodies** rather than new server APIs, so unpatched clients just see a plain link:
 - Dice: `[🎲](#chatto-dice:<kind>.<sides>.<value>,…;by=<userId>)` — the bot ↔ frontend contract; full spec in README.md.

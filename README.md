@@ -163,12 +163,14 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   of deleted messages (for example after a cleanup), the room stayed empty after a reload until it
   was opened again: the backfill effect could run while the previous backfill call was still
   settling, return, and never run again. A backfill call that loaded a page now checks again
-  itself. One change in `EventList.svelte`; worth reporting upstream.
+  itself. One change in `EventList.svelte`. Reported upstream (2026-10-26); drop the patch once
+  upstream fixes it.
 
 - `0008-deleted-threads.patch` – upstream bug fix. The Threads page listed followed threads whose
   root is deleted and that have no replies left, as "Message deleted"; it now omits them. (The
   room-timeline part – re-reading the reply count after a retraction – is fixed upstream since
-  0.5.0-beta.21, #3132.) One change in the Threads page.
+  0.5.0-beta.21, #3132.) One change in the Threads page. Reported upstream (2026-10-26); drop
+  the patch once upstream fixes it.
 
 ### Dice marker (bot ↔ frontend interface)
 

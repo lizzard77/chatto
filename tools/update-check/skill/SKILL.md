@@ -37,6 +37,9 @@ Versuch es zu reparieren, mit vertretbarem Aufwand:
 1. `conflict`: `git am` steht in `upstream/`. Konflikte lösen (Upstream-Änderungen übernehmen, unseren Teil
    obendrauf), `git -C upstream am --continue`, bis alle Patches angewendet sind. Bei JSON-Konflikten in
    `apps/frontend/messages/`: Upstream-Version nehmen und unsere Keys per Skript ergänzen.
+   Die Bugfix-Patches 0007/0008 sind upstream gemeldet: Hat upstream den Fehler selbst behoben (Konflikt
+   an derselben Stelle, oder der Patch ist leer), den Patch mit `git -C upstream am --skip` fallen lassen und
+   ihn in CLAUDE.md und README.md streichen; im Bericht erwähnen.
 2. `CHATTO_VERSION=<NEW> scripts/build.sh --check` (dauert einige Minuten; mit langem Timeout bzw. im
    Hintergrund laufen lassen und auf das Ende warten). `build.sh` setzt ohne TTY selbst `CI=true`, das braucht pnpm 10+. Ziel: Build grün inkl. Bundle-Budget, svelte-check 0 Errors.
    Fehler in unseren Dateien beheben, in `upstream/` als `git commit --fixup <Patch-Commit>` committen, dann
