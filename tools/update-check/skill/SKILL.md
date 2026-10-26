@@ -56,6 +56,9 @@ Versuch es zu reparieren, mit vertretbarem Aufwand:
   zusammenfassen, nichts weiter tun.
 - `precondition-failed`, `push-failed`, `compose-failed`: nichts reparieren, `⚠️ Chatto <NEW>: …` mit dem Grund melden.
 
-Nie deployen (kein `docker compose` auf he1), nie force-pushen, nie auf `main` des Chatto-Repos committen.
+Zugang he1 (nur auf ausdrückliche Bitte von Phil nutzen): `ssh -i /opt/data/.ssh/id_ed25519 phil@he1.lizzard77.dev`,
+Compose unter `~/selfhosted-services/he1/chatto` (vorher `git pull --ff-only`).
+
+Im Cron-Lauf nie deployen (kein `docker compose` auf he1), nie force-pushen, nie auf `main` des Chatto-Repos committen.
 Ein neuer automatischer Versuch für dieselbe Version passiert erst, wenn die Datei
 `~/.local/state/chatto-update-check/attempted-<NEW>` gelöscht wird – erwähne das bei `❌`/`⚠️`.
