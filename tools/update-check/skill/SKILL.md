@@ -38,7 +38,7 @@ Versuch es zu reparieren, mit vertretbarem Aufwand:
    obendrauf), `git -C upstream am --continue`, bis alle Patches angewendet sind. Bei JSON-Konflikten in
    `apps/frontend/messages/`: Upstream-Version nehmen und unsere Keys per Skript ergänzen.
 2. `CHATTO_VERSION=<NEW> scripts/build.sh --check` (dauert einige Minuten; mit langem Timeout bzw. im
-   Hintergrund laufen lassen und auf das Ende warten). Ziel: Build grün inkl. Bundle-Budget, svelte-check 0 Errors.
+   Hintergrund laufen lassen und auf das Ende warten). `build.sh` setzt ohne TTY selbst `CI=true`, das braucht pnpm 10+. Ziel: Build grün inkl. Bundle-Budget, svelte-check 0 Errors.
    Fehler in unseren Dateien beheben, in `upstream/` als `git commit --fixup <Patch-Commit>` committen, dann
    `GIT_SEQUENCE_EDITOR=: git -C upstream rebase -i --autosquash v<NEW>`. Scheitert nur das Bundle-Budget knapp:
    Budget im 3D-Würfel-Patch (`apps/frontend/scripts/check-bundle-size.mjs`) um 1–2 KiB anheben.

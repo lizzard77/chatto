@@ -5,6 +5,9 @@ source "$(dirname "$0")/lib.sh"
 need_upstream
 cd "$UPSTREAM"
 say "pnpm install"
+# Ab pnpm 10 bricht `pnpm install` ohne TTY ab (Rückfrage zum Entfernen von node_modules).
+# Ohne Terminal, also im Cron-Lauf oder in der CI, darum CI=true setzen.
+[ -t 0 ] || export CI=true
 pnpm install --frozen-lockfile >/dev/null
 say "Frontend bauen"
 CHATTO_BUILD_VERSION="${VERSION}-dev" pnpm run build:frontend
