@@ -165,18 +165,10 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   settling, return, and never run again. A backfill call that loaded a page now checks again
   itself. One change in `EventList.svelte`; worth reporting upstream.
 
-- `0008-deleted-threads.patch` – upstream bug fix. A deleted thread root whose replies are all
-  deleted too stayed visible: in the room as "This message was deleted" with its old reply count
-  until a reload (the room timeline never lowers the count when a reply is retracted), and on the
-  Threads page as "Message deleted". After a retraction the room store reads the count of its
-  loaded deleted roots again; the Threads page omits followed threads with a deleted root and no
-  replies. Changes in `@chatto/client` (`MessagesStore`, `timelineSync`) and the Threads page.
-
-- `0009-call-featured-once.patch` – upstream bug fix. In the sidebar call layout the featured
-  participant (active speaker or pinned tile) also stayed in the participant list as a compact card;
-  in the two-column grid it stretched to the height of the video card beside it and looked like a
-  second, empty tile. The list now omits the featured participant. One change in
-  `VoiceCallPanel.svelte`.
+- `0008-deleted-threads.patch` – upstream bug fix. The Threads page listed followed threads whose
+  root is deleted and that have no replies left, as "Message deleted"; it now omits them. (The
+  room-timeline part – re-reading the reply count after a retraction – is fixed upstream since
+  0.5.0-beta.21, #3132.) One change in the Threads page.
 
 ### Dice marker (bot ↔ frontend interface)
 
