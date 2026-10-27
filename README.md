@@ -141,22 +141,22 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   plain links. Room links to the same server get no link preview in the composer (a following URL
   gets it instead). Code in `apps/frontend/src/lib/roomLinks.ts`. Frontend only.
 
-- `0006-dice-tray.patch` – dice tray. A 🎲 button next to the attachment button in the composer
-  opens a flyout: pick d4–d100 (right-click removes a die), a modifier, then **Roll**, or
-  **2d12** (duality dice) in the die grid – shown only while the room's system is Daggerheart, as
-  the bot last reported it (`;sys=` or the system marker; `dh` before any report). The trash
-  button clears the pick. The tray posts a plain `!r 2d6+1` for the dice bot, into the
-  room's dice thread once it knows it. A small card above the room composer shows the latest
-  result; a viewer whose own latest roll was a GM roll (`;gm=1` in the dice marker) sees the
-  latest result per player instead. The card follows live events, thread replies included, and
-  loads the newest results of the known dice thread on open; the dice thread and the GM flag are
-  device-local. Pantheon sets up the thread with `!dice` in a thread and moves all rolls of the
-  room there. The flyout opens empty. In Savage Worlds rooms a **With Wild Die** toggle turns a
-  single-die pick into `!r wild d8` or `!r extra d8` (Pantheon: trait roll with or without the
-  Wild Die, regardless of GM mode); in Daggerheart rooms a Disadvantage / Normal / Advantage switch
-  adds `dis`/`adv` to the duality roll. A typed `!r …` that the tray can show (dice, modifier, `adv`/`dis`,
-  `wild`/`extra`) opens the flyout prefilled instead of posting; other rolls (macros, `4d6kh3`,
-  `dmg …`) go to the bot unchanged. Code in `apps/frontend/src/lib/diceTray/` and
+- `0006-dice-tray.patch` – dice bar. A floating panel above the right edge of the composer: pick
+  d4–d100 (a badge counts each die), −1/+1, in Daggerheart rooms **Advantage**/**Disadvantage**,
+  in Savage Worlds rooms **Wild Die** (on for players, off once the viewer's own latest roll was a
+  GM roll; only for a single die → `!r wild d8` / `!r extra d8`) and **Damage** (`!r dmg …`). The
+  room's system is the one the bot last reported (`;sys=` or the system marker; `dh` before any
+  report). The panel shows the command; **Send** puts it into an empty composer and sends it, or
+  posts it directly when the composer has other text. After any sent `!r`/`!roll` – clicked or
+  typed – the panel shows the bot's answer to it: the total, the outcome next to it (Daggerheart
+  (H)/(F)/(!), Savage Worlds 👍 plus a green arrow per raise, 👎, 👎! for a critical failure), the dice
+  in the colours of the 3D dice (dice that do not count struck through) and the modifier;
+  **New roll** goes back to the picker. The 🎲 button in the composer hides or shows the panel per
+  room (device-local, shown by default). While it is hidden, a small card above the room composer
+  shows the latest result; a viewer whose own latest roll was a GM roll (`;gm=1`) sees the latest
+  result per player instead. Results come from live events, thread replies included, and from the
+  known dice thread on open; Pantheon sets up the thread with `!dice` in a thread and moves all
+  rolls of the room there. Code in `apps/frontend/src/lib/diceTray/` and
   `lib/components/composer/ComposerDiceTray.svelte`. Frontend only, independent of 0002.
 
 - `0007-tombstone-backfill.patch` – upstream bug fix. When the newest page of a room consists only

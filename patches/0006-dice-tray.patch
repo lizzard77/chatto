@@ -3,397 +3,206 @@ From: Phil Reif <pr@sambal.net>
 Date: Sat, 17 Oct 2026 13:38:50 +0200
 Subject: [PATCH] feat(frontend): dice tray in the composer with a results card
 
-A dice button next to the attachment button opens a tray to pick d4 to
-d100, a modifier, or the Daggerheart duality dice. Rolling posts a !r
-command for the dice bot into the room's dice thread when the tray knows
-it. A card above the room composer shows the latest dice bot result, or
-the latest result per player when the viewer's own latest roll was a GM
-roll. It follows live events, thread replies included.
+A floating dice bar at the composer lets the viewer pick d4 to d100, a
+modifier, and in Daggerheart advantage or disadvantage, or in Savage
+Worlds the Wild Die (on for players, off in GM mode) and damage rolls.
+The bar shows the resulting !r command for the dice bot. Send puts it into
+an empty composer and sends it, or posts it directly when the composer has
+other text. The bar then shows the bot's answer for the viewer's latest
+roll command, typed or clicked: the total, the Daggerheart outcome
+(Hope, Fear, critical) or the Savage Worlds outcome (success, raises,
+failure), and the dice in the colours of the 3D dice. The composer's dice
+button hides or shows the bar per room. A card above the room composer
+shows the latest results while the bar is hidden, the latest result per
+player for a GM.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- apps/frontend/messages/de-DE/composer.json    |  23 ++
- apps/frontend/messages/en-GB/composer.json    |  23 ++
- .../composer/ComposerDiceTray.svelte          | 256 ++++++++++++++
- .../composer/ComposerToolbar.svelte           |  14 +-
- .../composer/MessageComposer.svelte           |   6 +-
- .../composer/messageComposerState.svelte.ts   |  11 +
- .../src/lib/diceTray/DiceTrayResults.svelte   | 116 +++++++
- apps/frontend/src/lib/diceTray/DieIcon.svelte |  47 +++
- .../src/lib/diceTray/diceTray.svelte.spec.ts  | 186 ++++++++++
- .../src/lib/diceTray/diceTray.svelte.ts       | 328 ++++++++++++++++++
+ apps/frontend/messages/de-DE/composer.json    |  36 ++
+ apps/frontend/messages/en-GB/composer.json    |  36 ++
+ .../composer/ComposerDiceTray.svelte          |  32 ++
+ .../composer/ComposerToolbar.svelte           |  13 +-
+ .../composer/MessageComposer.svelte           |  25 +-
+ .../composer/messageComposerState.svelte.ts   |  25 +
+ apps/frontend/src/lib/diceTray/DiceBar.svelte | 337 +++++++++++++
+ .../src/lib/diceTray/DiceTrayResults.svelte   | 119 +++++
+ apps/frontend/src/lib/diceTray/DieIcon.svelte |  47 ++
+ .../src/lib/diceTray/diceTray.svelte.spec.ts  | 225 +++++++++
+ .../src/lib/diceTray/diceTray.svelte.ts       | 441 ++++++++++++++++++
+ .../src/lib/i18n/identicalTranslations.ts     |   1 +
  .../[roomId]/ConversationPane.svelte          |   4 +
- 11 files changed, 1011 insertions(+), 3 deletions(-)
+ 13 files changed, 1338 insertions(+), 3 deletions(-)
  create mode 100644 apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
+ create mode 100644 apps/frontend/src/lib/diceTray/DiceBar.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/DieIcon.svelte
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 
 diff --git a/apps/frontend/messages/de-DE/composer.json b/apps/frontend/messages/de-DE/composer.json
-index 58a2412dc..ed156f820 100644
+index 58a2412dc..0bdf74d93 100644
 --- a/apps/frontend/messages/de-DE/composer.json
 +++ b/apps/frontend/messages/de-DE/composer.json
-@@ -76,6 +76,29 @@
+@@ -76,6 +76,42 @@
        "all_room_members": "Alle Raummitglieder",
        "members_here": "Gerade anwesende Mitglieder",
        "role": "Rolle"
 +    },
 +    "dice_tray": {
-+      "open": "Würfeln",
 +      "title": "Würfel",
 +      "die": "W{sides}",
 +      "add_die": "{die} hinzufügen",
-+      "empty": "Würfel wählen",
-+      "clear": "Auswahl zurücksetzen",
-+      "modifier": "Modifikator",
-+      "decrease": "Modifikator verringern",
-+      "increase": "Modifikator erhöhen",
-+      "duality": "2W12",
-+      "duality_hint": "Hoffnung und Furcht (Daggerheart), im GM-Modus der GM-Würfel",
-+      "roll": "Würfeln",
-+      "failed": "Wurf konnte nicht gesendet werden",
++      "decrease": "1 abziehen",
++      "increase": "1 addieren",
 +      "per_player": "Letzter Wurf pro Spieler",
 +      "hide": "Bis zum nächsten Wurf ausblenden",
-+      "wild_die": "Mit Wild Die",
-+      "wild_die_hint": "Savage Worlds: Eigenschaftswurf mit einem Würfel, Pantheon würfelt den Wild Die (W6) dazu",
 +      "advantage": "Vorteil",
 +      "disadvantage": "Nachteil",
-+      "normal": "Normal",
-+      "advantage_label": "Vorteil oder Nachteil (Daggerheart)"
++      "bar": "Würfelleiste",
++      "empty": "Würfel wählen",
++      "clear": "Zurücksetzen",
++      "send": "Senden",
++      "rolling": "Würfelt …",
++      "no_answer": "Noch keine Antwort vom Würfel-Bot.",
++      "new_roll": "Neuer Wurf",
++      "failed": "Wurf konnte nicht gesendet werden",
++      "outcome_hope": "Mit Hoffnung",
++      "outcome_fear": "Mit Furcht",
++      "outcome_crit": "Kritischer Erfolg",
++      "outcome_hope_short": "H",
++      "outcome_fear_short": "F",
++      "outcome_crit_short": "!",
++      "wild_die": "Wild Die",
++      "wild_die_hint": "Savage Worlds: Eigenschaftswurf mit einem Würfel, Pantheon würfelt den Wild Die (W6) dazu",
++      "damage": "Schaden",
++      "damage_hint": "Savage-Worlds-Schaden: alle Würfel explodieren und werden addiert, kein Wild Die",
++      "outcome_success": "Erfolg",
++      "outcome_raises_count": {
++        "one": "Erfolg mit {count} Steigerung",
++        "other": "Erfolg mit {count} Steigerungen"
++      },
++      "outcome_fail": "Fehlschlag",
++      "outcome_crit_fail": "Kritischer Fehlschlag"
      }
    }
  }
 diff --git a/apps/frontend/messages/en-GB/composer.json b/apps/frontend/messages/en-GB/composer.json
-index 20a4c633d..f50d0dfa9 100644
+index 20a4c633d..288cad6e6 100644
 --- a/apps/frontend/messages/en-GB/composer.json
 +++ b/apps/frontend/messages/en-GB/composer.json
-@@ -76,6 +76,29 @@
+@@ -76,6 +76,42 @@
        "all_room_members": "All room members",
        "members_here": "Members currently here",
        "role": "Role"
 +    },
 +    "dice_tray": {
-+      "open": "Roll dice",
 +      "title": "Dice",
 +      "die": "d{sides}",
 +      "add_die": "Add a {die}",
-+      "empty": "Pick dice",
-+      "clear": "Clear the selection",
-+      "modifier": "Modifier",
-+      "decrease": "Decrease modifier",
-+      "increase": "Increase modifier",
-+      "duality": "2d12",
-+      "duality_hint": "Hope and Fear (Daggerheart), or the GM's die in GM mode",
-+      "roll": "Roll",
-+      "failed": "Could not send the roll",
++      "decrease": "Subtract 1",
++      "increase": "Add 1",
 +      "per_player": "Latest roll per player",
 +      "hide": "Hide until the next roll",
-+      "wild_die": "With Wild Die",
-+      "wild_die_hint": "Savage Worlds: trait roll with one die; Pantheon adds the Wild Die (d6)",
 +      "advantage": "Advantage",
 +      "disadvantage": "Disadvantage",
-+      "normal": "Normal",
-+      "advantage_label": "Advantage or disadvantage (Daggerheart)"
++      "bar": "Dice bar",
++      "empty": "Pick dice",
++      "clear": "Clear",
++      "send": "Send",
++      "rolling": "Rolling…",
++      "no_answer": "No answer from the dice bot yet.",
++      "new_roll": "New roll",
++      "failed": "Could not send the roll",
++      "outcome_hope": "With Hope",
++      "outcome_fear": "With Fear",
++      "outcome_crit": "Critical success",
++      "outcome_hope_short": "H",
++      "outcome_fear_short": "F",
++      "outcome_crit_short": "!",
++      "wild_die": "Wild Die",
++      "wild_die_hint": "Savage Worlds: a trait roll with one die; Pantheon adds the Wild Die (d6)",
++      "damage": "Damage",
++      "damage_hint": "Savage Worlds damage: all dice ace and add up, no Wild Die",
++      "outcome_success": "Success",
++      "outcome_raises_count": {
++        "one": "Success with {count} raise",
++        "other": "Success with {count} raises"
++      },
++      "outcome_fail": "Failure",
++      "outcome_crit_fail": "Critical failure"
      }
    }
  }
 diff --git a/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
 new file mode 100644
-index 000000000..949939653
+index 000000000..f9293a109
 --- /dev/null
 +++ b/apps/frontend/src/lib/components/composer/ComposerDiceTray.svelte
-@@ -0,0 +1,256 @@
+@@ -0,0 +1,32 @@
 +<!--
 +@component
 +
-+Composer button that opens the dice tray: pick dice and a modifier, then post
-+the roll as a `!r` command for the dice bot. See `$lib/diceTray/diceTray.svelte`.
-+The tray opens empty. `api.openWith` opens it with the contents of a typed
-+`!r` command; the composer uses it instead of posting the command.
++Composer button that shows or hides the dice bar of the room. See
++`$lib/diceTray/DiceBar.svelte`.
 +-->
 +<script lang="ts">
-+  import { page } from '$app/state';
-+  import { CompactActionButton, ContextMenu, SegmentedControl } from '$lib/ui';
-+  import { Button } from '$lib/ui/form';
++  import { CompactActionButton } from '$lib/ui';
 +  import { m } from '$lib/i18n/messages';
-+  import { toastError } from '$lib/utils/errorMessage';
 +  import { useServerScope } from '$lib/state/server/scope.svelte';
-+  import { createMessageAPI } from '@chatto/client/api/messages';
-+  import {
-+    DICE_SIDES,
-+    MAX_DICE_PER_SIZE,
-+    diceTray,
-+    dualityCommand,
-+    isTraitPool,
-+    rollCommand,
-+    type DiceAdvantage,
-+    type DicePool,
-+    type DiceTrayApi,
-+    type DieSides
-+  } from '$lib/diceTray/diceTray.svelte';
-+  import DieIcon from '$lib/diceTray/DieIcon.svelte';
++  import { diceTray } from '$lib/diceTray/diceTray.svelte';
 +
-+  let { disabled, api = $bindable() }: { disabled: boolean; api?: DiceTrayApi } = $props();
++  let { roomId, disabled }: { roomId: string; disabled: boolean } = $props();
 +
-+  const serverScope = useServerScope();
-+  const tray = diceTray(serverScope.serverId);
-+  const roomId = $derived(page.params.roomId ?? null);
-+
-+  let wrapperElement = $state<HTMLElement>();
-+  let triggerElement = $state<HTMLButtonElement>();
-+  let open = $state(false);
-+  let anchor = $state<{ top: number; bottom: number; left: number } | null>(null);
-+  let sending = $state(false);
-+  let pool = $state<DicePool>({});
-+  let modifier = $state(0);
-+  // Savage Worlds: roll a single trait die with or without the Wild Die. Kept between rolls.
-+  let wild = $state(true);
-+  // Daggerheart: advantage or disadvantage on the duality roll
-+  let advantage = $state<DiceAdvantage>('normal');
-+  const swade = $derived(roomId !== null && tray.system(roomId) === 'swade');
-+  const command = $derived(rollCommand(pool, modifier, swade ? wild : null));
-+  const duality = $derived(roomId !== null && tray.system(roomId) === 'dh');
-+
-+  function openAt(button: HTMLButtonElement | null | undefined): boolean {
-+    if (disabled || !roomId || !button) return false;
-+    const rect = button.getBoundingClientRect();
-+    triggerElement = button;
-+    anchor = { top: rect.top, bottom: rect.bottom, left: rect.left };
-+    open = true;
-+    return true;
-+  }
-+
-+  function openTray(event: MouseEvent): void {
-+    // Each opening starts with an empty selection.
-+    clear();
-+    openAt(event.currentTarget as HTMLButtonElement);
-+  }
-+
-+  api = {
-+    openWith(prefill) {
-+      const button = wrapperElement?.querySelector('button');
-+      if (!openAt(button)) return false;
-+      pool = { ...prefill.pool };
-+      modifier = prefill.modifier;
-+      if (prefill.wild !== null) wild = prefill.wild;
-+      advantage = prefill.advantage;
-+      return true;
-+    }
-+  };
-+
-+  function closeTray({ restoreFocus = true }: { restoreFocus?: boolean } = {}): void {
-+    open = false;
-+    anchor = null;
-+    if (restoreFocus) triggerElement?.focus();
-+  }
-+
-+  function addDie(sides: DieSides): void {
-+    pool = { ...pool, [sides]: Math.min((pool[sides] ?? 0) + 1, MAX_DICE_PER_SIZE) };
-+  }
-+
-+  function removeDie(event: MouseEvent, sides: DieSides): void {
-+    event.preventDefault();
-+    pool = { ...pool, [sides]: Math.max((pool[sides] ?? 0) - 1, 0) };
-+  }
-+
-+  function clear(): void {
-+    pool = {};
-+    modifier = 0;
-+    advantage = 'normal';
-+  }
-+
-+  async function send(body: string | null): Promise<void> {
-+    if (!body || !roomId || sending) return;
-+    sending = true;
-+    try {
-+      await serverScope.connection.getAPI(createMessageAPI).createMessage({
-+        roomId,
-+        body,
-+        // The bot moves results into the collection thread anyway; posting there
-+        // keeps the command out of the room timeline until the bot removes it.
-+        threadRootEventId: tray.diceThread(roomId)
-+      });
-+      closeTray({ restoreFocus: false });
-+    } catch (error) {
-+      toastError(error, m('composer.dice_tray.failed'));
-+    } finally {
-+      sending = false;
-+    }
-+  }
++  const tray = diceTray(useServerScope().serverId);
++  const visible = $derived(tray.barVisible(roomId));
 +</script>
 +
-+<span class="contents" bind:this={wrapperElement}>
-+  <CompactActionButton
-+    wrapperClass="mobile-presentation:pill-button-group-touch"
-+    label={m('composer.dice_tray.open')}
-+    type="button"
-+    onpointerdown={(event) => event.preventDefault()}
-+    onclick={openTray}
-+    disabled={disabled || !roomId}
-+    title={m('composer.dice_tray.open')}
-+  >
-+    <span aria-hidden="true" class="iconify icon-[uil--dice-five] text-[15px]"></span>
-+  </CompactActionButton>
-+</span>
-+
-+{#if open}
-+  <ContextMenu
-+    {anchor}
-+    role="dialog"
-+    ariaLabel={m('composer.dice_tray.title')}
-+    class="w-[min(20rem,calc(100vw-1rem))]"
-+    onclose={closeTray}
-+  >
-+    <div class="flex flex-col gap-1" data-testid="dice-tray">
-+      <header class="flex items-center gap-2 menu-section px-3 py-2 text-sm font-medium">
-+        <span aria-hidden="true" class="iconify icon-[uil--dice-five] text-muted"></span>
-+        <span class="flex-1">{m('composer.dice_tray.title')}</span>
-+        <span class="text-muted tabular-nums" aria-live="polite">
-+          {command ? command.slice(3) : m('composer.dice_tray.empty')}
-+        </span>
-+      </header>
-+
-+      <section class="flex flex-col gap-3 menu-section px-3 py-2">
-+        <div class="grid grid-cols-4 gap-1.5">
-+          {#each DICE_SIDES as sides (sides)}
-+            {@const count = pool[sides] ?? 0}
-+            <button
-+              type="button"
-+              class={[
-+                'relative flex cursor-pointer flex-col items-center gap-0.5 rounded-md border border-border px-1 py-1.5 text-sm font-medium hover:bg-surface-emphasized',
-+                count > 0 && 'bg-surface-selected'
-+              ]}
-+              aria-label={m('composer.dice_tray.add_die', {
-+                die: m('composer.dice_tray.die', { sides })
-+              })}
-+              onclick={() => addDie(sides)}
-+              oncontextmenu={(event) => removeDie(event, sides)}
-+            >
-+              <DieIcon {sides} />
-+              {m('composer.dice_tray.die', { sides })}
-+              {#if count > 0}
-+                <span
-+                  class="absolute -end-1 -top-1 min-w-4 rounded-full bg-action px-1 text-xs text-on-action"
-+                  aria-hidden="true">{count}</span
-+                >
-+              {/if}
-+            </button>
-+          {/each}
-+          {#if duality}
-+            <button
-+              type="button"
-+              class="flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-md border border-border px-1 py-1.5 text-sm font-medium hover:bg-surface-emphasized"
-+              disabled={sending}
-+              title={m('composer.dice_tray.duality_hint')}
-+              onclick={() => send(dualityCommand(modifier, advantage))}
-+            >
-+              <DieIcon sides={12} />
-+              {m('composer.dice_tray.duality')}
-+            </button>
-+          {/if}
-+        </div>
-+
-+        {#if duality}
-+          <SegmentedControl
-+            label={m('composer.dice_tray.advantage_label')}
-+            options={[
-+              { value: 'dis', label: m('composer.dice_tray.disadvantage') },
-+              { value: 'normal', label: m('composer.dice_tray.normal') },
-+              { value: 'adv', label: m('composer.dice_tray.advantage') }
-+            ]}
-+            value={advantage}
-+            onchange={(value) => (advantage = value)}
-+            class="w-full"
-+          />
-+        {/if}
-+
-+        {#if swade}
-+          <label
-+            class={['flex items-center gap-2 text-sm', !isTraitPool(pool) && 'opacity-60']}
-+            title={m('composer.dice_tray.wild_die_hint')}
-+          >
-+            <input
-+              type="checkbox"
-+              bind:checked={wild}
-+              disabled={!isTraitPool(pool)}
-+              data-testid="dice-tray-wild-die"
-+            />
-+            <span class="flex-1">{m('composer.dice_tray.wild_die')}</span>
-+          </label>
-+        {/if}
-+
-+        <div class="flex items-center gap-2 text-sm">
-+          <span class="flex-1 text-muted">{m('composer.dice_tray.modifier')}</span>
-+          <button
-+            type="button"
-+            class="w-8 cursor-pointer rounded-md border border-border py-1 hover:bg-surface-emphasized"
-+            aria-label={m('composer.dice_tray.decrease')}
-+            onclick={() => (modifier -= 1)}>−</button
-+          >
-+          <span class="w-8 text-center tabular-nums"
-+            >{modifier > 0 ? `+${modifier}` : modifier}</span
-+          >
-+          <button
-+            type="button"
-+            class="w-8 cursor-pointer rounded-md border border-border py-1 hover:bg-surface-emphasized"
-+            aria-label={m('composer.dice_tray.increase')}
-+            onclick={() => (modifier += 1)}>+</button
-+          >
-+        </div>
-+      </section>
-+
-+      <footer class="flex items-center justify-end gap-2 menu-section px-3 py-2">
-+        <button
-+          type="button"
-+          class="me-auto flex cursor-pointer items-center justify-center rounded-md p-1.5 text-muted hover:bg-surface-emphasized hover:text-text"
-+          aria-label={m('composer.dice_tray.clear')}
-+          title={m('composer.dice_tray.clear')}
-+          onclick={clear}
-+        >
-+          <span aria-hidden="true" class="iconify icon-[uil--trash-alt] text-lg"></span>
-+        </button>
-+        <Button size="sm" disabled={!command || sending} onclick={() => send(command)}>
-+          {m('composer.dice_tray.roll')}
-+        </Button>
-+      </footer>
-+    </div>
-+  </ContextMenu>
-+{/if}
++<CompactActionButton
++  wrapperClass="mobile-presentation:pill-button-group-touch"
++  label={m('composer.dice_tray.bar')}
++  type="button"
++  onpointerdown={(event) => event.preventDefault()}
++  onclick={() => tray.setBarVisible(roomId, !visible)}
++  {disabled}
++  aria-pressed={visible}
++>
++  <span
++    aria-hidden="true"
++    class={['iconify icon-[uil--dice-five] text-[15px]', visible && 'text-action']}
++  ></span>
++</CompactActionButton>
 diff --git a/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte b/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
-index c5ae3ef79..b6f195f8e 100644
+index c5ae3ef79..43a8922b0 100644
 --- a/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
 +++ b/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
-@@ -8,7 +8,9 @@ Formatting commands live in `ComposerFormattingToolbar`.
+@@ -8,6 +8,7 @@ Formatting commands live in `ComposerFormattingToolbar`.
    import { CompactActionButton } from '$lib/ui';
    import { m } from '$lib/i18n/messages';
    import ComposerTimestampPicker from './ComposerTimestampPicker.svelte';
 +  import ComposerDiceTray from './ComposerDiceTray.svelte';
    import type { ComposerEditorApi } from './editorTypes';
-+  import type { DiceTrayApi } from '$lib/diceTray/diceTray.svelte';
  
    let {
-     editorApi,
-@@ -26,7 +28,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
+@@ -26,7 +27,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
      echoToConversation = false,
      alsoSendToChannel = false,
      onToggleAlsoSendToChannel = () => {},
 -    onsubmit
 +    onsubmit,
-+    diceTrayApi = $bindable()
++    roomId
    }: {
      editorApi: ComposerEditorApi | null;
      inputDisabled: boolean;
-@@ -44,6 +47,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
+@@ -44,6 +46,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
      alsoSendToChannel?: boolean;
      onToggleAlsoSendToChannel?: () => void;
      onsubmit: () => void;
-+    /** The dice tray of this composer, for typed `!r` commands. */
-+    diceTrayApi?: DiceTrayApi;
++    /** The room of the composer, for the dice bar toggle. */
++    roomId?: string;
    } = $props();
  </script>
  
-@@ -51,7 +56,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
+@@ -51,7 +55,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
    class="flex min-w-0 flex-wrap items-center justify-end gap-1 @min-[560px]/composer:shrink-0 @min-[560px]/composer:flex-nowrap @min-[560px]/composer:desktop-presentation:mb-1"
    data-testid="composer-action-toolbar"
  >
@@ -403,95 +212,483 @@ index c5ae3ef79..b6f195f8e 100644
      {#if !isEditing && canAttach}
        <CompactActionButton
          wrapperClass="mobile-presentation:pill-button-group-touch"
-@@ -65,6 +71,10 @@ Formatting commands live in `ComposerFormattingToolbar`.
+@@ -65,6 +70,10 @@ Formatting commands live in `ComposerFormattingToolbar`.
        </CompactActionButton>
      {/if}
  
-+    {#if !isEditing}
-+      <ComposerDiceTray disabled={inputDisabled} bind:api={diceTrayApi} />
++    {#if !isEditing && roomId}
++      <ComposerDiceTray {roomId} disabled={inputDisabled} />
 +    {/if}
 +
      <ComposerTimestampPicker disabled={inputDisabled} {editorApi} {effectiveTimezone} />
    </div>
  
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index cad796f01..6f85a0794 100644
+index cad796f01..7223303bc 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-@@ -6,6 +6,7 @@
+@@ -6,9 +6,12 @@
    import ComposerStatusRow from './ComposerStatusRow.svelte';
    import SlowModeBadge from './SlowModeBadge.svelte';
    import { createMessageAPI } from '@chatto/client/api/messages';
-+  import type { DiceTrayApi } from '$lib/diceTray/diceTray.svelte';
++  import { diceTray } from '$lib/diceTray/diceTray.svelte';
++  import DiceBar from '$lib/diceTray/DiceBar.svelte';
    import { serverUi } from '$lib/state/server/serverUi';
    import { createLinkPreviewAPI } from '@chatto/client/api/linkPreviews';
    import { m } from '$lib/i18n/messages';
-@@ -136,6 +137,7 @@
++  import { toastError } from '$lib/utils/errorMessage';
+   import { useServerScope } from '$lib/state/server/scope.svelte';
+   import { ConfirmDialog, Dialog, FormDialog, CompactActionButton } from '$lib/ui';
+   import { Button, TextArea } from '$lib/ui/form';
+@@ -136,6 +139,7 @@
    const composerContext = getComposerContext();
    const replyState = $derived(composerContext.replyState);
    const membersStore = useRoomMembersStore();
-+  let diceTrayApi = $state<DiceTrayApi>();
++  const tray = diceTray(serverScope.serverId);
    const composer = new MessageComposerState({
      draftReplies: serverUi(stores).draftReplies,
      getRoomId: () => roomId,
-@@ -184,7 +186,8 @@
+@@ -184,7 +188,8 @@
      serverInfo,
      roomUnreadStore,
      getMessageAPI: () => serverScope.connection.getAPI(createMessageAPI),
 -    getLinkPreviewAPI: () => serverScope.connection.getAPI(createLinkPreviewAPI)
 +    getLinkPreviewAPI: () => serverScope.connection.getAPI(createLinkPreviewAPI),
-+    openDiceTray: (prefill) => diceTrayApi?.openWith(prefill) ?? false
++    onSendingMessage: (body) => tray.noteRollSent(roomId, body, stores.accountId)
    });
  
    let expandedDraft = $state(false);
-@@ -413,6 +416,7 @@
+@@ -293,6 +298,23 @@
+       class="relative chat-input-surface min-w-0 px-2.5 py-1.5"
+       class:opacity-50={composer.inputDisabled}
+     >
++      {#if !composer.isEditing && tray.barVisible(roomId)}
++        <div class="absolute end-0 bottom-full z-10 mb-2">
++          <DiceBar
++            {roomId}
++            system={tray.system(roomId)}
++            disabled={composer.inputDisabled}
++            onsend={async (command) => {
++              try {
++                return await composer.sendRollCommand(command);
++              } catch (error) {
++                toastError(error, m('composer.dice_tray.failed'));
++                return false;
++              }
++            }}
++          />
++        </div>
++      {/if}
+       <ComposerModeIndicators
+         inReplyTo={replyState.messageEventId ?? undefined}
+         replyDisplayName={replyState.actorDisplayName || undefined}
+@@ -413,6 +435,7 @@
            onToggleAlsoSendToChannel={() =>
              (composer.alsoSendToChannel = !composer.alsoSendToChannel)}
            onsubmit={() => composer.submit()}
-+          bind:diceTrayApi
++          {roomId}
          />
        </div>
      </div>
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 2d604f0fb..5975a93a9 100644
+index 2d604f0fb..20ca49414 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-@@ -1,4 +1,5 @@
- import { onDestroy, tick, untrack, type Snippet } from 'svelte';
-+import { parseRollCommand, type DicePrefill } from '$lib/diceTray/diceTray.svelte';
- import { SvelteSet } from 'svelte/reactivity';
- import type { TimelineEventView } from '@chatto/client/timeline/timelineEvents';
- import type {
-@@ -122,6 +123,8 @@ type MessageComposerDependencies = {
+@@ -122,6 +122,8 @@ type MessageComposerDependencies = {
    roomUnreadStore: RoomUnreadStore;
    getMessageAPI: () => ReturnType<typeof createMessageAPI>;
    getLinkPreviewAPI: () => ReturnType<typeof createLinkPreviewAPI>;
-+  /** Opens the composer's dice tray for a typed `!r` command; false when it cannot. */
-+  openDiceTray?: (prefill: DicePrefill) => boolean;
++  /** Called with the body of each new message before it is sent, for dice roll commands. */
++  onSendingMessage?: (body: string) => void;
  };
  
  export function bodyForSend(text: string): string {
-@@ -638,6 +641,14 @@ export class MessageComposerState {
+@@ -424,6 +426,28 @@ export class MessageComposerState {
+     this.autocomplete.update();
+   }
+ 
++  /**
++   * Sends a roll command from the dice bar. An empty composer takes the command
++   * and sends it as usual; otherwise the command is posted directly, so the
++   * viewer's text stays.
++   */
++  async sendRollCommand(command: string): Promise<boolean> {
++    if (!this.isEditing && !hasVisibleContent(this.message) && !this.hasSendableAttachments) {
++      if (!this.editorApi || this.inputDisabled) return false;
++      this.editorApi.setContent(command);
++      this.handleEditorUpdate(command);
++      await this.submit();
++      return true;
++    }
++    this.#dependencies.onSendingMessage?.(command);
++    await this.#dependencies.getMessageAPI().createMessage({
++      roomId: this.#dependencies.getRoomId(),
++      body: command,
++      threadRootEventId: this.#dependencies.getThreadRootEventId()
++    });
++    return true;
++  }
++
+   handleEditorReady(api: ComposerEditorApi): void {
+     this.editorApi = api;
+     if (this.message) api.setContent(this.message);
+@@ -638,6 +662,7 @@ export class MessageComposerState {
      const bodyToSend = bodyForSend(this.message);
      const filesToSend = this.hasSendableAttachments ? [...this.attachments.selectedFiles] : null;
      if (!hasVisibleContent(bodyToSend) && !filesToSend) return;
-+    // A typed `!r …` opens the dice tray with that roll instead of posting it.
-+    // Rolls that the tray cannot show (macros, `4d6kh3`, damage) go to the bot.
-+    const dicePrefill = filesToSend ? null : parseRollCommand(bodyToSend);
-+    if (dicePrefill && this.#dependencies.openDiceTray?.(dicePrefill)) {
-+      this.draft.clearText(this.draftKey);
-+      this.#resetEditor();
-+      return;
-+    }
++    if (!filesToSend) this.#dependencies.onSendingMessage?.(bodyToSend);
  
      const post: PreparedPost = {
        draftKey: this.draftKey,
+diff --git a/apps/frontend/src/lib/diceTray/DiceBar.svelte b/apps/frontend/src/lib/diceTray/DiceBar.svelte
+new file mode 100644
+index 000000000..2b8f52a7c
+--- /dev/null
++++ b/apps/frontend/src/lib/diceTray/DiceBar.svelte
+@@ -0,0 +1,337 @@
++<!--
++@component
++
++Floating dice bar at the composer. The viewer picks dice, a modifier and, in
++Daggerheart, advantage; the bar shows the roll command, for example
++`!r 2d12+1 adv`. Send posts it (`onsend`), then the bar shows the dice bot's
++result with coloured dice until the viewer starts a new roll.
++See `$lib/diceTray/diceTray.svelte`.
++-->
++<script lang="ts">
++  import { m } from '$lib/i18n/messages';
++  import { Button } from '$lib/ui/form';
++  import Deadline from '$lib/lifecycle/Deadline.svelte';
++  import { useServerScope } from '$lib/state/server/scope.svelte';
++  import {
++    DICE_SIDES,
++    applyDiceAction,
++    diceTray,
++    emptyRoll,
++    formatRollCommand,
++    isEmptyRoll,
++    isTraitPool,
++    type DiceAction,
++    type DiceRoll,
++    type DiceSystem
++  } from './diceTray.svelte';
++  import DieIcon from './DieIcon.svelte';
++
++  let {
++    roomId,
++    system,
++    disabled,
++    onsend
++  }: {
++    roomId: string;
++    system: DiceSystem;
++    disabled: boolean;
++    /** Posts the roll command; false when it was not sent. */
++    onsend: (command: string) => Promise<boolean>;
++  } = $props();
++
++  const serverScope = useServerScope();
++  const tray = diceTray(serverScope.serverId);
++
++  const daggerheart = $derived(system === 'dh');
++  const swade = $derived(system === 'swade');
++  let roll = $state<DiceRoll>(emptyRoll());
++  // Savage Worlds: the Wild Die is on for players and off in GM mode until the viewer picks.
++  let wildChoice = $state<boolean | null>(null);
++  const wild = $derived(wildChoice ?? !tray.viewerIsGm);
++  const wildApplies = $derived(swade && !roll.damage && isTraitPool(roll.pool));
++  const commandRoll = $derived<DiceRoll>({ ...roll, wild: wildApplies ? wild : null });
++  const command = $derived(formatRollCommand(commandRoll));
++  let sending = $state(false);
++  // The viewer's sent roll command, typed or from this bar.
++  const sent = $derived(tray.sentRoll(roomId));
++  let timedOutAt = $state<number | null>(null);
++  const timedOut = $derived(sent !== null && timedOutAt === sent.atMs);
++  const latest = $derived(tray.rolls(roomId).latestOf(serverScope.store.accountId));
++  const result = $derived(sent && latest && latest.eventId !== sent.before ? latest : null);
++  // Daggerheart duality roll: Hope, Fear, or a critical success on a double.
++  const duality = $derived.by(() => {
++    const hope = result?.dice.find((die) => die.kind === 'hope');
++    const fear = result?.dice.find((die) => die.kind === 'fear');
++    if (!hope || !fear) return null;
++    return hope.value === fear.value ? 'crit' : hope.value > fear.value ? 'hope' : 'fear';
++  });
++
++  function apply(action: DiceAction): void {
++    roll = applyDiceAction(roll, action);
++  }
++
++  async function send(): Promise<void> {
++    if (sending || disabled) return;
++    sending = true;
++    try {
++      // The composer records the sent command in the tray.
++      await onsend(command);
++    } finally {
++      sending = false;
++    }
++  }
++
++  function newRoll(): void {
++    tray.clearSentRoll(roomId);
++    roll = emptyRoll();
++    wildChoice = null;
++  }
++
++  // Savage Worlds trait roll with the Wild Die: the lower of trait die and Wild Die does not count.
++  const unusedKinds = $derived.by(() => {
++    const dice = result?.dice ?? [];
++    if (!result?.swade || !dice.some((die) => die.kind === 'wild')) return new Set<string>();
++    const sum = (wildDie: boolean) =>
++      dice.filter((die) => (die.kind === 'wild') === wildDie).reduce((a, die) => a + die.value, 0);
++    const wildWins = sum(true) > sum(false);
++    return new Set(wildWins ? ['std', 'gm'] : ['wild']);
++  });
++
++  // Thumbs up for a success with a green arrow per raise, thumbs down for a failure.
++  const swadeOutcome = $derived.by(() => {
++    const outcome = result?.swade;
++    if (!outcome) return null;
++    if (outcome === 'cf')
++      return { up: false, crit: true, raises: 0, label: m('composer.dice_tray.outcome_crit_fail') };
++    if (outcome === 'fail')
++      return { up: false, crit: false, raises: 0, label: m('composer.dice_tray.outcome_fail') };
++    const raises = outcome === 'ok' ? 0 : Number(outcome.slice(1));
++    return {
++      up: true,
++      crit: false,
++      raises,
++      label:
++        raises === 0
++          ? m('composer.dice_tray.outcome_success')
++          : m('composer.dice_tray.outcome_raises_count', { count: raises })
++    };
++  });
++
++  // Colours of the 3D dice in `$lib/dice/diceRenderer.ts`.
++  const DIE_COLOURS: Record<string, { body: string; ink: string; edge?: string }> = {
++    hope: { body: '#f2c230', ink: '#2a1a00', edge: '#a87b00' },
++    fear: { body: '#4b2178', ink: '#f1e6ff', edge: '#8e44ad' },
++    adv: { body: '#27ae60', ink: '#ffffff' },
++    dis: { body: '#c0392b', ink: '#ffffff' },
++    gm: { body: '#6e1a1a', ink: '#ffd27a' },
++    wild: { body: '#d35400', ink: '#ffffff' },
++    std: { body: '#f3efe4', ink: '#1f1f1f' },
++    drop: { body: '#8d8d8d', ink: '#e6e6e6' }
++  };
++  const dieColours = (kind: string) => DIE_COLOURS[kind] ?? DIE_COLOURS.std;
++  const OUTCOMES = {
++    hope: {
++      label: m('composer.dice_tray.outcome_hope'),
++      short: m('composer.dice_tray.outcome_hope_short')
++    },
++    fear: {
++      label: m('composer.dice_tray.outcome_fear'),
++      short: m('composer.dice_tray.outcome_fear_short')
++    },
++    crit: {
++      label: m('composer.dice_tray.outcome_crit'),
++      short: m('composer.dice_tray.outcome_crit_short')
++    }
++  };
++  const signed = (value: number) => (value > 0 ? `+${value}` : `${value}`);
++
++  const buttonClass =
++    'flex h-10 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-text/25 px-2 text-sm font-medium hover:bg-surface-emphasized disabled:cursor-default disabled:opacity-50';
++</script>
++
++<div
++  role="toolbar"
++  tabindex="-1"
++  aria-label={m('composer.dice_tray.title')}
++  aria-orientation="vertical"
++  class="flex w-60 flex-col gap-1.5 menu p-2"
++  data-testid="dice-bar"
++  onpointerdown={(event) => event.preventDefault()}
++>
++  {#if sent}
++    <div class="flex flex-col gap-2 p-1" aria-live="polite" data-testid="dice-bar-result">
++      <div class="text-muted tabular-nums">{sent.command.replace(/^!\S+\s*/, '')}</div>
++      {#if result && !result.note}
++        {#if result.total !== null}
++          <div class="flex items-baseline gap-2 text-3xl font-semibold tabular-nums">
++            {result.total}
++            {#if swadeOutcome}
++              <span
++                class={['inline-flex items-center', swadeOutcome.crit && 'text-danger']}
++                title={swadeOutcome.label}
++                >(<span aria-hidden="true">{swadeOutcome.up ? '👍' : '👎'}</span
++                >{#if swadeOutcome.crit}!{/if}{#if swadeOutcome.raises > 3}<span
++                    aria-hidden="true"
++                    class="iconify icon-[uil--arrow-up] text-success"
++
++                  ></span>×{swadeOutcome.raises}{:else}{#each { length: swadeOutcome.raises } as _, index (index)}<span
++                      aria-hidden="true"
++                      class="iconify -mx-1 icon-[uil--arrow-up] text-success"
++                    ></span>{/each}{/if})<span class="sr-only">{swadeOutcome.label}</span></span
++              >
++            {:else if duality}
++              <span
++                style:color={duality === 'hope'
++                  ? DIE_COLOURS.hope.edge
++                  : duality === 'fear'
++                    ? DIE_COLOURS.fear.edge
++                    : undefined}
++                class={[duality === 'crit' && 'text-success']}
++                title={OUTCOMES[duality].label}>({OUTCOMES[duality].short})</span
++              >
++            {/if}
++          </div>
++        {/if}
++        <div class="flex flex-wrap items-center gap-1.5">
++          {#each result.dice as die, index (index)}
++            {@const colours = dieColours(die.kind)}
++            <span
++              class={[
++                'flex h-10 min-w-10 flex-col items-center justify-center rounded-md border border-text/25 px-1 leading-none font-semibold tabular-nums',
++                (die.kind === 'drop' || unusedKinds.has(die.kind)) && 'line-through opacity-60'
++              ]}
++              style:background-color={colours.body}
++              style:color={colours.ink}
++            >
++              {die.value}
++              <span class="mt-0.5 text-[0.65rem] font-normal opacity-80"
++                >{m('composer.dice_tray.die', { sides: die.sides })}</span
++              >
++            </span>
++          {/each}
++          {#if sent.roll && sent.roll.modifier !== 0}
++            <span
++              class="flex h-10 items-center rounded-md border border-text/25 px-2 font-semibold tabular-nums"
++              >{signed(sent.roll.modifier)}</span
++            >
++          {/if}
++        </div>
++        <div class="text-muted">{result.summary}</div>
++      {:else if result}
++        <div class="text-danger">{result.summary}</div>
++      {:else if timedOut}
++        <div class="text-muted">{m('composer.dice_tray.no_answer')}</div>
++      {:else}
++        <div class="text-muted">{m('composer.dice_tray.rolling')}</div>
++        <Deadline
++          at={sent.atMs}
++          offsetMilliseconds={15_000}
++          onreached={() => (timedOutAt = sent.atMs)}
++        />
++      {/if}
++    </div>
++    <Button size="sm" onclick={newRoll}>{m('composer.dice_tray.new_roll')}</Button>
++  {:else}
++    <div class="grid grid-cols-2 gap-1.5">
++      {#each DICE_SIDES as sides (sides)}
++        {@const count = roll.pool[sides] ?? 0}
++        <button
++          type="button"
++          class={[buttonClass, 'relative', count > 0 && 'bg-surface-selected']}
++          {disabled}
++          aria-label={m('composer.dice_tray.add_die', {
++            die: m('composer.dice_tray.die', { sides })
++          })}
++          title={m('composer.dice_tray.die', { sides })}
++          onclick={() => apply({ die: sides })}
++        >
++          <DieIcon {sides} class="size-5 shrink-0" />
++          <span>{m('composer.dice_tray.die', { sides })}</span>
++          {#if count > 0}
++            <span
++              class="absolute -end-1.5 -top-1.5 min-w-5 rounded-full bg-action px-1 text-xs text-on-action"
++              aria-hidden="true">{count}</span
++            >
++          {/if}
++        </button>
++      {/each}
++      <span></span>
++      <button
++        type="button"
++        class={buttonClass}
++        {disabled}
++        aria-label={m('composer.dice_tray.decrease')}
++        title={m('composer.dice_tray.decrease')}
++        onclick={() => apply({ modifier: -1 })}>−1</button
++      >
++      <button
++        type="button"
++        class={buttonClass}
++        {disabled}
++        aria-label={m('composer.dice_tray.increase')}
++        title={m('composer.dice_tray.increase')}
++        onclick={() => apply({ modifier: 1 })}>+1</button
++      >
++      {#if daggerheart}
++        <button
++          type="button"
++          class={[buttonClass, roll.advantage === 'adv' && 'bg-surface-selected']}
++          {disabled}
++          aria-pressed={roll.advantage === 'adv'}
++          onclick={() => apply({ advantage: 'adv' })}
++        >
++          {m('composer.dice_tray.advantage')}
++        </button>
++        <button
++          type="button"
++          class={[buttonClass, roll.advantage === 'dis' && 'bg-surface-selected']}
++          {disabled}
++          aria-pressed={roll.advantage === 'dis'}
++          onclick={() => apply({ advantage: 'dis' })}
++        >
++          {m('composer.dice_tray.disadvantage')}
++        </button>
++      {/if}
++      {#if swade}
++        <button
++          type="button"
++          class={[buttonClass, wildApplies && wild && 'bg-surface-selected']}
++          disabled={disabled || !wildApplies}
++          aria-pressed={wildApplies && wild}
++          title={m('composer.dice_tray.wild_die_hint')}
++          onclick={() => (wildChoice = !wild)}
++        >
++          {m('composer.dice_tray.wild_die')}
++        </button>
++        <button
++          type="button"
++          class={[buttonClass, roll.damage && 'bg-surface-selected']}
++          {disabled}
++          aria-pressed={roll.damage}
++          title={m('composer.dice_tray.damage_hint')}
++          onclick={() => (roll = { ...roll, damage: !roll.damage })}
++        >
++          {m('composer.dice_tray.damage')}
++        </button>
++      {/if}
++    </div>
++    <div class="flex items-center gap-2 px-1">
++      <span class="min-w-0 flex-1 truncate font-medium tabular-nums" aria-live="polite">
++        {isEmptyRoll(roll) ? m('composer.dice_tray.empty') : command.slice(3)}
++      </span>
++      <button
++        type="button"
++        class="flex cursor-pointer items-center rounded-md p-1.5 text-muted hover:bg-surface-emphasized hover:text-text disabled:cursor-default disabled:opacity-50"
++        aria-label={m('composer.dice_tray.clear')}
++        title={m('composer.dice_tray.clear')}
++        disabled={isEmptyRoll(roll)}
++        onclick={() => (roll = emptyRoll())}
++      >
++        <span aria-hidden="true" class="iconify icon-[uil--trash-alt]"></span>
++      </button>
++    </div>
++    <Button size="sm" disabled={disabled || sending || isEmptyRoll(roll)} onclick={send}>
++      {m('composer.dice_tray.send')}
++    </Button>
++  {/if}
++</div>
 diff --git a/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte b/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
 new file mode 100644
-index 000000000..e9576bb10
+index 000000000..0355987d8
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/DiceTrayResults.svelte
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,119 @@
 +<!--
 +@component
 +
@@ -527,7 +724,10 @@ index 000000000..e9576bb10
 +  const newestId = $derived(note?.eventId ?? shown[0]?.eventId ?? null);
 +  // Hidden until a newer result arrives.
 +  let hiddenUntilAfter = $state<string | null>(null);
-+  const visible = $derived(newestId !== null && newestId !== hiddenUntilAfter);
++  // The dice bar shows the viewer's results itself; the card is for rooms without it.
++  const visible = $derived(
++    newestId !== null && newestId !== hiddenUntilAfter && !tray.barVisible(roomId)
++  );
 +
 +  useProjectionEvent((update) => {
 +    const event = update.event;
@@ -663,38 +863,21 @@ index 000000000..e5a6c8b40
 +</svg>
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
 new file mode 100644
-index 000000000..1e3af47dc
+index 000000000..99c9d7e25
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.spec.ts
-@@ -0,0 +1,186 @@
+@@ -0,0 +1,225 @@
 +import { describe, expect, it } from 'vitest';
 +import {
 +  ServerDiceTray,
-+  dualityCommand,
++  applyDiceAction,
++  emptyRoll,
++  isEmptyRoll,
++  formatRollCommand,
 +  parseDiceSystem,
 +  parseRollCommand,
-+  parseTrayRoll,
-+  rollCommand
++  parseTrayRoll
 +} from './diceTray.svelte';
-+
-+describe('rollCommand', () => {
-+  it('builds the bot command from the pool in die order with the modifier', () => {
-+    expect(rollCommand({ 20: 1, 6: 2 }, 3)).toBe('!r 2d6+d20+3');
-+    expect(rollCommand({ 100: 1 }, -2)).toBe('!r d100-2');
-+  });
-+
-+  it('returns null without dice', () => {
-+    expect(rollCommand({}, 2)).toBeNull();
-+    expect(rollCommand({ 6: 0 }, 0)).toBeNull();
-+  });
-+
-+  it('asks for or against the Wild Die only for a single trait die', () => {
-+    expect(rollCommand({ 8: 1 }, 1, true)).toBe('!r wild d8+1');
-+    expect(rollCommand({ 8: 1 }, 0, false)).toBe('!r extra d8');
-+    expect(rollCommand({ 8: 1, 6: 1 }, 0, true)).toBe('!r d6+d8');
-+    expect(rollCommand({ 8: 2 }, 0, false)).toBe('!r 2d8');
-+  });
-+});
 +
 +describe('parseRollCommand', () => {
 +  it('reads dice, modifier and the Wild Die choice of a typed roll', () => {
@@ -702,43 +885,47 @@ index 000000000..1e3af47dc
 +      pool: { 6: 2, 20: 1 },
 +      modifier: 3,
 +      wild: null,
-+      advantage: 'normal'
++      advantage: 'normal',
++      damage: false
 +    });
 +    expect(parseRollCommand('!roll wild W8 - 1')).toEqual({
 +      pool: { 8: 1 },
 +      modifier: -1,
 +      wild: true,
-+      advantage: 'normal'
++      advantage: 'normal',
++      damage: false
 +    });
 +    expect(parseRollCommand('!R extra d6')).toEqual({
 +      pool: { 6: 1 },
 +      modifier: 0,
 +      wild: false,
-+      advantage: 'normal'
++      advantage: 'normal',
++      damage: false
 +    });
 +    expect(parseRollCommand('!r')).toEqual({
 +      pool: {},
 +      modifier: 0,
 +      wild: null,
-+      advantage: 'normal'
++      advantage: 'normal',
++      damage: false
 +    });
 +    expect(parseRollCommand('!r adv +2')).toEqual({
 +      pool: {},
 +      modifier: 2,
 +      wild: null,
-+      advantage: 'adv'
++      advantage: 'adv',
++      damage: false
 +    });
 +    expect(parseRollCommand('!r -1 disadvantage')?.advantage).toBe('dis');
 +  });
 +
-+  it('leaves other text and rolls the tray cannot show to the bot', () => {
++  it('leaves other text and rolls that the bar cannot extend', () => {
 +    for (const text of [
 +      'hallo',
 +      '!rx',
 +      '!ini Mira',
 +      '!r fireball',
 +      '!r 4d6kh3',
-+      '!r dmg d8+2d6',
 +      '!r d7',
 +      '!r 11d6',
 +      '!r d6x'
@@ -748,14 +935,37 @@ index 000000000..1e3af47dc
 +  });
 +});
 +
-+describe('dualityCommand', () => {
-+  it('lets the bot pick the duality dice', () => {
-+    expect(dualityCommand(0)).toBe('!r');
-+    expect(dualityCommand(2)).toBe('!r +2');
-+    expect(dualityCommand(-1)).toBe('!r -1');
-+    expect(dualityCommand(2, 'adv')).toBe('!r adv +2');
-+    expect(dualityCommand(0, 'dis')).toBe('!r dis');
-+    expect(dualityCommand(0, 'normal')).toBe('!r');
++describe('formatRollCommand', () => {
++  it('writes dice in die order, the modifier, the Wild Die choice and advantage', () => {
++    const roll = emptyRoll();
++    expect(formatRollCommand({ ...roll, pool: { 20: 1, 6: 2 }, modifier: 3 })).toBe('!r 2d6+d20+3');
++    expect(formatRollCommand({ ...roll, pool: { 8: 1 }, wild: false })).toBe('!r extra d8');
++    expect(formatRollCommand({ ...roll, pool: { 12: 2 }, modifier: 2, advantage: 'adv' })).toBe(
++      '!r 2d12+2 adv'
++    );
++    expect(formatRollCommand({ ...roll, modifier: -1 })).toBe('!r -1');
++    expect(formatRollCommand(roll)).toBe('!r');
++    expect(formatRollCommand({ ...roll, pool: { 6: 2, 8: 1 }, damage: true, wild: true })).toBe(
++      '!r dmg 2d6+d8'
++    );
++    expect(parseRollCommand('!r dmg 2d6+1')).toMatchObject({ pool: { 6: 2 }, damage: true });
++  });
++});
++
++describe('applyDiceAction', () => {
++  it('adds dice and modifiers and toggles advantage', () => {
++    let roll = emptyRoll();
++    expect(isEmptyRoll(roll)).toBe(true);
++    roll = applyDiceAction(roll, { die: 12 });
++    roll = applyDiceAction(roll, { die: 12 });
++    roll = applyDiceAction(roll, { modifier: 1 });
++    roll = applyDiceAction(roll, { advantage: 'adv' });
++    expect(formatRollCommand(roll)).toBe('!r 2d12+1 adv');
++    roll = applyDiceAction(roll, { advantage: 'adv' });
++    expect(formatRollCommand(roll)).toBe('!r 2d12+1');
++    roll = applyDiceAction(roll, { advantage: 'dis' });
++    expect(formatRollCommand(roll)).toBe('!r 2d12+1 dis');
++    expect(isEmptyRoll(roll)).toBe(false);
 +  });
 +});
 +
@@ -772,7 +982,15 @@ index 000000000..1e3af47dc
 +      gm: true,
 +      text: 'Phil 🎲 12 — 3d6+4: [2, 5, 1]+4 = 12',
 +      createdAtMs: 1000,
-+      note: false
++      note: false,
++      dice: [
++        { kind: 'std', sides: 6, value: 2 },
++        { kind: 'std', sides: 6, value: 5 },
++        { kind: 'std', sides: 6, value: 1 }
++      ],
++      total: 12,
++      summary: '🎲 12 — 3d6+4: [2, 5, 1]+4 = 12',
++      swade: null
 +    });
 +  });
 +
@@ -785,7 +1003,10 @@ index 000000000..1e3af47dc
 +    expect(roll).toMatchObject({
 +      rollerId: 'u_phil',
 +      note: true,
-+      text: 'Phil ❌ Zu viele Würfel: höchstens 999 auf einmal'
++      text: 'Phil ❌ Zu viele Würfel: höchstens 999 auf einmal',
++      dice: [],
++      total: null,
++      summary: '❌ Zu viele Würfel: höchstens 999 auf einmal'
 +    });
 +  });
 +
@@ -853,17 +1074,36 @@ index 000000000..1e3af47dc
 +    expect(tray.system('r1')).toBe('raw');
 +  });
 +});
++
++describe('ServerDiceTray.noteRollSent', () => {
++  it('remembers sent roll commands until the viewer starts a new roll', () => {
++    const tray = new ServerDiceTray('server-sent');
++    tray.noteRollSent('room', 'Hallo zusammen', 'u1');
++    expect(tray.sentRoll('room')).toBeNull();
++    tray.noteRollSent('room', '!r 2d12+1 adv', 'u1');
++    expect(tray.sentRoll('room')).toMatchObject({
++      command: '!r 2d12+1 adv',
++      roll: { pool: { 12: 2 }, modifier: 1, advantage: 'adv' },
++      before: null
++    });
++    tray.noteRollSent('room', '!roll fireball', 'u1');
++    expect(tray.sentRoll('room')).toMatchObject({ command: '!roll fireball', roll: null });
++    tray.clearSentRoll('room');
++    expect(tray.sentRoll('room')).toBeNull();
++  });
++});
 diff --git a/apps/frontend/src/lib/diceTray/diceTray.svelte.ts b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 new file mode 100644
-index 000000000..f1217c259
+index 000000000..2c3924f4b
 --- /dev/null
 +++ b/apps/frontend/src/lib/diceTray/diceTray.svelte.ts
-@@ -0,0 +1,328 @@
+@@ -0,0 +1,441 @@
 +/**
-+ * Dice tray: roll dice from the composer and show the latest dice bot results.
++ * Dice tray: a dice bar at the composer and the latest dice bot results.
 + *
-+ * The tray does not roll. It posts a `!r <notation>` command for a dice bot,
-+ * for example Pantheon, and reads the bot's replies. A reply carries a marker
++ * Nothing here rolls. A click in the dice bar writes a `!r <notation>` command
++ * for a dice bot, for example Pantheon, into the composer; the viewer edits it
++ * and sends it with Enter. The tray reads the bot's replies. A reply carries a marker
 + * link `[🎲](#chatto-dice:<dice>;by=<userId>;gm=1)`; `by` names who rolled and
 + * `gm=1` marks a roll in the bot's GM mode. The bot posts the replies into a
 + * per-session collection thread of the room, which `!dice` in a thread sets up.
@@ -874,7 +1114,7 @@ index 000000000..f1217c259
 + * `[\u200b](#chatto-dice-note:by=<userId>)`; only the roller sees it in the tray.
 + * Both markers may carry `;sys=<system>`, the bot's dice system of the room, and a
 + * reply to the bot's system command carries `[\u200b](#chatto-dice-system:<system>)`.
-+ * The tray offers the Daggerheart duality roll only while the room's system is `dh`.
++ * The bar offers advantage and disadvantage only while the room's system is `dh`.
 + * All state is device-local.
 + */
 +
@@ -892,57 +1132,36 @@ index 000000000..f1217c259
 +
 +const signed = (value: number) => (value > 0 ? `+${value}` : value < 0 ? `${value}` : '');
 +
++/** Daggerheart advantage on the duality roll: the bot adds or subtracts a d6. */
++export type DiceAdvantage = 'dis' | 'normal' | 'adv';
++
++/**
++ * A roll command as tray contents. `wild` is null when the command names none;
++ * `advantage` is `normal` without `adv` or `dis`.
++ */
++export type DiceRoll = {
++  pool: DicePool;
++  modifier: number;
++  wild: boolean | null;
++  advantage: DiceAdvantage;
++  /** Savage Worlds damage roll (`!r dmg …`): all dice ace, no Wild Die. */
++  damage: boolean;
++};
++
 +/** Whether the pool is exactly one die: a Savage Worlds trait roll. */
 +export function isTraitPool(pool: DicePool): boolean {
 +  const counts = Object.values(pool).filter((count) => (count ?? 0) > 0);
 +  return counts.length === 1 && counts[0] === 1;
 +}
 +
-+/**
-+ * The bot command for a pool and a modifier, for example `!r 2d6+d20+1`; null
-+ * without dice. `wild` applies to a Savage Worlds trait roll (one die): `true`
-+ * asks for the Wild Die (`!r wild d8`), `false` for none (`!r extra d8`).
-+ */
-+export function rollCommand(
-+  pool: DicePool,
-+  modifier: number,
-+  wild: boolean | null = null
-+): string | null {
-+  const terms = DICE_SIDES.flatMap((sides) => {
-+    const count = pool[sides] ?? 0;
-+    return count > 0 ? [`${count > 1 ? count : ''}d${sides}`] : [];
-+  });
-+  if (terms.length === 0) return null;
-+  const prefix = wild !== null && isTraitPool(pool) ? (wild ? 'wild ' : 'extra ') : '';
-+  return `!r ${prefix}${terms.join('+')}${signed(modifier)}`;
-+}
-+
-+/** Daggerheart advantage on the duality roll: the bot adds or subtracts a d6. */
-+export type DiceAdvantage = 'dis' | 'normal' | 'adv';
-+
-+/**
-+ * Tray contents taken from a typed roll command. `wild` is null when the
-+ * command names none; `advantage` is `normal` without `adv` or `dis`.
-+ */
-+export type DicePrefill = {
-+  pool: DicePool;
-+  modifier: number;
-+  wild: boolean | null;
-+  advantage: DiceAdvantage;
-+};
-+
-+/** A composer's dice tray: opens with given contents; false when it cannot open now. */
-+export type DiceTrayApi = { openWith(prefill: DicePrefill): boolean };
-+
 +const ROLL_COMMAND = /^!(?:r|roll)(?:\s+(.*))?$/i;
 +
 +/**
-+ * Reads a typed roll command such as `!r 2d6+d20+1`, `!r wild d8+1` or `!r +2`
-+ * into tray contents. Returns null for other text and for rolls that the tray
-+ * cannot show, such as macros, `4d6kh3` or damage rolls; those go to the bot
-+ * unchanged.
++ * Reads a roll command such as `!r 2d6+d20+1`, `!r wild d8+1`, `!r dmg 2d6+1`
++ * or `!r +2 adv`. Returns null for other text and for rolls that the dice bar
++ * cannot show, such as macros or `4d6kh3`.
 + */
-+export function parseRollCommand(text: string): DicePrefill | null {
++export function parseRollCommand(text: string): DiceRoll | null {
 +  const match = ROLL_COMMAND.exec(text.trim());
 +  if (!match) return null;
 +  let advantage: DiceAdvantage = 'normal';
@@ -959,15 +1178,18 @@ index 000000000..f1217c259
 +    .join(' ')
 +    .trim();
 +  let wild: boolean | null = null;
-+  const prefix = /^(wild|extra)\s+/i.exec(rest);
++  let damage = false;
++  const prefix = /^(wild|extra|dmg)\s+/i.exec(rest);
 +  if (prefix) {
-+    wild = prefix[1].toLowerCase() === 'wild';
++    const word = prefix[1].toLowerCase();
++    if (word === 'dmg') damage = true;
++    else wild = word === 'wild';
 +    rest = rest.slice(prefix[0].length);
 +  }
 +  const pool: DicePool = {};
 +  let modifier = 0;
 +  const input = rest.replace(/\s+/g, '');
-+  if (!input) return { pool, modifier, wild, advantage };
++  if (!input) return { pool, modifier, wild, advantage, damage };
 +  const term = /([+-])?(?:(\d*)[dDwW](\d+)|(\d+))/y;
 +  let index = 0;
 +  while (index < input.length) {
@@ -987,16 +1209,49 @@ index 000000000..f1217c259
 +    }
 +    index = term.lastIndex;
 +  }
-+  return { pool, modifier, wild, advantage };
++  return { pool, modifier, wild, advantage, damage };
 +}
 +
-+/**
-+ * The Daggerheart duality roll: the bot rolls Hope and Fear (or the GM's die),
-+ * with advantage or disadvantage as an extra d6.
-+ */
-+export function dualityCommand(modifier: number, advantage: DiceAdvantage = 'normal'): string {
-+  const parts = [advantage === 'normal' ? '' : advantage, signed(modifier)].filter(Boolean);
++/** The bot command for tray contents, for example `!r wild d8+1` or `!r 2d12+2 adv`. */
++export function formatRollCommand({ pool, modifier, wild, advantage, damage }: DiceRoll): string {
++  const dice = DICE_SIDES.flatMap((sides) => {
++    const count = pool[sides] ?? 0;
++    return count > 0 ? [`${count > 1 ? count : ''}d${sides}`] : [];
++  }).join('+');
++  const formula = `${dice}${signed(modifier)}`;
++  const parts = [
++    damage ? 'dmg' : wild === null ? '' : wild ? 'wild' : 'extra',
++    formula,
++    advantage === 'normal' ? '' : advantage
++  ].filter(Boolean);
 +  return parts.length ? `!r ${parts.join(' ')}` : '!r';
++}
++
++/** A click in the dice bar. */
++export type DiceAction = { die: DieSides } | { modifier: number } | { advantage: 'adv' | 'dis' };
++
++/** An empty roll: the dice bar starts with it. */
++export function emptyRoll(): DiceRoll {
++  return { pool: {}, modifier: 0, wild: null, advantage: 'normal', damage: false };
++}
++
++/** The roll after a dice bar click. Advantage toggles; a second click on it removes it. */
++export function applyDiceAction(roll: DiceRoll, action: DiceAction): DiceRoll {
++  if ('die' in action) {
++    const count = Math.min((roll.pool[action.die] ?? 0) + 1, MAX_DICE_PER_SIZE);
++    return { ...roll, pool: { ...roll.pool, [action.die]: count } };
++  }
++  if ('modifier' in action) return { ...roll, modifier: roll.modifier + action.modifier };
++  return { ...roll, advantage: roll.advantage === action.advantage ? 'normal' : action.advantage };
++}
++
++/** Whether a roll has nothing picked yet. */
++export function isEmptyRoll(roll: DiceRoll): boolean {
++  return (
++    DICE_SIDES.every((sides) => !roll.pool[sides]) &&
++    roll.modifier === 0 &&
++    roll.advantage === 'normal'
++  );
 +}
 +
 +/** Dice systems of the bot; `dh` (Daggerheart) is the bot's default. */
@@ -1011,6 +1266,12 @@ index 000000000..f1217c259
 +  return system && DICE_SYSTEMS.includes(system) ? (system as DiceSystem) : null;
 +}
 +
++/**
++ * One die of a result, from the marker: `kind` is for example `hope`, `fear`,
++ * `adv`, `dis`, `wild`, `gm`, `std`, or `drop` (a die that does not count).
++ */
++export type TrayDie = { kind: string; sides: number; value: number };
++
 +/** One dice bot result. */
 +export type TrayRoll = {
 +  eventId: string;
@@ -1021,7 +1282,30 @@ index 000000000..f1217c259
 +  createdAtMs: number;
 +  /** A reply without dice (an error or a hint) that only the roller sees. */
 +  note: boolean;
++  /** The dice of the result; empty for a note. */
++  dice: TrayDie[];
++  /** The total in bold at the start of the result, if any. */
++  total: number | null;
++  /** The result text without the roller's name, for example `🗡️ 16 (5+11) mit Furcht`. */
++  summary: string;
++  /**
++   * Savage Worlds trait roll outcome from the marker's `sw` parameter: `ok`,
++   * `r1` to `r9` (raises), `fail`, or `cf` (critical failure); null otherwise.
++   */
++  swade: string | null;
 +};
++
++const DIE = /^(\w{1,16})\.(\d{1,3})\.(\d{1,4})$/;
++
++function parseDice(list: string): TrayDie[] {
++  return list.split(',').flatMap((entry) => {
++    const found = DIE.exec(entry);
++    return found ? [{ kind: found[1], sides: Number(found[2]), value: Number(found[3]) }] : [];
++  });
++}
++
++// The bot puts the roller's name in bold before the result.
++const ROLLER_NAME = /^\*\*(?:\\.|[^*\\])+\*\*\s+(?=\S)/;
 +
 +const MARKER = /\s*\[🎲\]\(#chatto-dice:([^)\s]{1,700})\)/g;
 +const NOTE_MARKER = /\s*\[[^\]]{0,4}\]\(#chatto-dice-note:([^)\s]{1,200})\)/g;
@@ -1051,13 +1335,19 @@ index 000000000..f1217c259
 +  );
 +  const rollerId = params.by;
 +  if (!rollerId) return null;
++  const result = body.replace(ROLLER_NAME, '');
++  const total = /\*\*(-?\d+)\*\*/.exec(result.replace(MARKER, ''))?.[1];
 +  return {
 +    eventId,
 +    rollerId,
 +    gm: params.gm === '1',
 +    text: plainText(body),
 +    createdAtMs,
-+    note: !dicePayload
++    note: !dicePayload,
++    dice: dicePayload ? parseDice(dicePayload.split(';')[0]) : [],
++    total: total === undefined ? null : Number(total),
++    summary: plainText(result),
++    swade: params.sw && /^(?:ok|fail|cf|r[1-9])$/.test(params.sw) ? params.sw : null
 +  };
 +}
 +
@@ -1077,6 +1367,12 @@ index 000000000..f1217c259
 +    return this.rolls.findLast((roll) => !roll.note) ?? null;
 +  }
 +
++  /** The latest result or note of a roller, if any. */
++  latestOf(rollerId: string | null): TrayRoll | null {
++    if (!rollerId) return null;
++    return this.rolls.findLast((roll) => roll.rollerId === rollerId) ?? null;
++  }
++
 +  /** The latest note (error or hint) for a roller, if any. */
 +  latestNote(rollerId: string | null): TrayRoll | null {
 +    if (!rollerId) return null;
@@ -1093,6 +1389,18 @@ index 000000000..f1217c259
 +
 +type RoomSystem = { system: DiceSystem; atMs: number };
 +
++/**
++ * A roll command that the viewer sent from a composer, typed or from the dice
++ * bar. `roll` is null for commands that the bar cannot show, such as macros;
++ * `before` is the viewer's latest result before it, so the next one is the answer.
++ */
++export type SentRoll = {
++  command: string;
++  roll: DiceRoll | null;
++  before: string | null;
++  atMs: number;
++};
++
 +const systemsCodec = Codecs.json<Record<string, RoomSystem>>(
 +  (value): value is Record<string, RoomSystem> =>
 +    typeof value === 'object' &&
@@ -1104,6 +1412,13 @@ index 000000000..f1217c259
 +        DICE_SYSTEMS.includes((entry as RoomSystem).system) &&
 +        typeof (entry as RoomSystem).atMs === 'number'
 +    )
++);
++
++const barCodec = Codecs.json<Record<string, boolean>>(
++  (value): value is Record<string, boolean> =>
++    typeof value === 'object' &&
++    value !== null &&
++    Object.values(value).every((shown) => typeof shown === 'boolean')
 +);
 +
 +const threadsCodec = Codecs.json<Record<string, string>>(
@@ -1118,10 +1433,13 @@ index 000000000..f1217c259
 +  readonly #threads: StorageSlot<Record<string, string>>;
 +  readonly #gm: StorageSlot<boolean>;
 +  readonly #systems: StorageSlot<Record<string, RoomSystem>>;
++  readonly #bar: StorageSlot<Record<string, boolean>>;
 +  // Each RoomDiceRolls is reactive itself; this only hands out one per room.
 +  readonly #rooms: Record<string, RoomDiceRolls> = {};
 +  #threadIds = $state<Record<string, string>>({});
 +  #systemByRoom = $state<Record<string, RoomSystem>>({});
++  #barByRoom = $state<Record<string, boolean>>({});
++  #sentByRoom = $state<Record<string, SentRoll>>({});
 +  /** The viewer's own latest roll was a GM roll. */
 +  viewerIsGm = $state(false);
 +
@@ -1132,6 +1450,40 @@ index 000000000..f1217c259
 +    this.viewerIsGm = this.#gm.get();
 +    this.#systems = serverSlot(serverId, 'dice-tray-systems', {}, systemsCodec);
 +    this.#systemByRoom = this.#systems.get();
++    this.#bar = serverSlot(serverId, 'dice-bar-rooms', {}, barCodec);
++    this.#barByRoom = this.#bar.get();
++  }
++
++  /** Whether the dice bar shows in a room; it shows until the viewer hides it there. */
++  barVisible(roomId: string): boolean {
++    return this.#barByRoom[roomId] ?? true;
++  }
++
++  /** The viewer's last sent roll command in a room, until the viewer starts a new roll. */
++  sentRoll(roomId: string): SentRoll | null {
++    return this.#sentByRoom[roomId] ?? null;
++  }
++
++  /** Record a message that the viewer sends; only roll commands (`!r`, `!roll`) count. */
++  noteRollSent(roomId: string, body: string, viewerId: string | null): void {
++    const command = body.trim();
++    if (!ROLL_COMMAND.test(command)) return;
++    const before = this.rolls(roomId).latestOf(viewerId)?.eventId ?? null;
++    const roll = parseRollCommand(command);
++    this.#sentByRoom = {
++      ...this.#sentByRoom,
++      [roomId]: { command, roll, before, atMs: Date.now() }
++    };
++  }
++
++  clearSentRoll(roomId: string): void {
++    const { [roomId]: _, ...rest } = this.#sentByRoom;
++    this.#sentByRoom = rest;
++  }
++
++  setBarVisible(roomId: string, visible: boolean): void {
++    this.#barByRoom = { ...this.#barByRoom, [roomId]: visible };
++    this.#bar.set(this.#barByRoom);
 +  }
 +
 +  /** The room's dice system as the bot last reported it; the bot's default before that. */
@@ -1187,6 +1539,18 @@ index 000000000..f1217c259
 +export function diceTray(serverId: string): ServerDiceTray {
 +  return (trays[serverId] ??= new ServerDiceTray(serverId));
 +}
+diff --git a/apps/frontend/src/lib/i18n/identicalTranslations.ts b/apps/frontend/src/lib/i18n/identicalTranslations.ts
+index 117d6ec97..60da68894 100644
+--- a/apps/frontend/src/lib/i18n/identicalTranslations.ts
++++ b/apps/frontend/src/lib/i18n/identicalTranslations.ts
+@@ -13,6 +13,7 @@ export const identicalTranslations: Record<string, readonly string[]> = {
+   'admin.event_log.event_page_title': ['de-DE'],
+   'admin.system.broker': ['zh-CN', 'zh-TW'],
+   'composer.link_url': ['nl-BE', 'nl-NL', 'pt-BR', 'pt-PT'],
++  'composer.dice_tray.wild_die': ['de-DE'],
+   'preview.youtube_title': ['eo', 'nb-NO', 'sv-SE'],
+   'room.thread.title': ['de-DE'],
+   'settings.account.sso.title': ['de-DE'],
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 index 39c2e21e1..2de1d7aab 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
@@ -1210,5 +1574,5 @@ index 39c2e21e1..2de1d7aab 100644
      {...composer}
      {roomId}
 -- 
-2.47.3
+2.56.0
 

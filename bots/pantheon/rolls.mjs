@@ -40,16 +40,63 @@ function advantage(adv) {
     };
 }
 
-/** Spieler: Duality Dice (2d12 Hope + Fear). */
-function daggerheartPlayer({ modifier, adv }) {
+/**
+ * Formel mit genau zwei W12 (`2d12+3`, `2w12`, `d12+d12-1`, `2d12+d6 adv`) → Duality-Wurf;
+ * sonst null. `+d6` / `-d6` gelten als Vorteil / Nachteil, weitere Würfel werden addiert.
+ */
+function parseDualityFormula(args) {
+    let adv = null;
+    const rest = [];
+    for (const arg of args) {
+        const lower = arg.toLowerCase();
+        if (lower === 'adv' || lower === 'advantage') adv = 'adv';
+        else if (lower === 'dis' || lower === 'disadvantage') adv = 'dis';
+        else rest.push(lower);
+    }
+    const input = rest.join('');
+    const tokens = input.match(/[+-]?[^+-]+/g);
+    if (!tokens || tokens.join('') !== input) return null;
+    let d12 = 0;
+    let modifier = 0;
+    const extra = [];
+    for (const token of tokens) {
+        const m = /^([+-]?)(\d*)[dw](\d+)$/.exec(token);
+        if (m) {
+            const sign = m[1] === '-' ? -1 : 1;
+            const count = m[2] ? parseInt(m[2], 10) : 1;
+            const sides = parseInt(m[3], 10);
+            if (count < 1 || count > 10 || sides < 2 || sides > 100) return null;
+            if (sides === 12 && sign > 0) d12 += count;
+            else if (sides === 6 && count === 1 && !adv) adv = sign > 0 ? 'adv' : 'dis';
+            else extra.push({ sign, count, sides });
+        } else if (/^[+-]?\d+$/.test(token)) {
+            modifier += parseInt(token, 10);
+        } else {
+            return null;
+        }
+    }
+    return d12 === 2 ? { modifier, adv, extra } : null;
+}
+
+/** Spieler: Duality Dice (2d12 Hope + Fear), optional mit weiteren Würfeln aus einer Formel. */
+function daggerheartPlayer({ modifier, adv, extra = [] }) {
     const hope = die(12);
     const fear = die(12);
     const a = advantage(adv);
-    const total = hope + fear + modifier + a.value;
+    const dice = [{ kind: 'hope', sides: 12, value: hope }, { kind: 'fear', sides: 12, value: fear }, ...a.dice];
+    let extraValue = 0;
+    let extraText = '';
+    for (const { sign, count, sides } of extra) {
+        const values = Array.from({ length: count }, () => die(sides));
+        extraValue += sign * values.reduce((x, y) => x + y, 0);
+        extraText += `${sign < 0 ? '-' : '+'}${count > 1 ? count : ''}d${sides}[${values.join(',')}]`;
+        dice.push(...values.map(value => ({ kind: 'std', sides, value })));
+    }
+    const total = hope + fear + modifier + a.value + extraValue;
     const status = hope === fear ? '**KRITISCH**' : hope > fear ? '**mit Hoffnung**' : '**mit Furcht**';
     return {
-        text: `🗡️ **${total}** (${hope}+${fear}${signed(modifier)}${a.text}) ${status}`,
-        dice: [{ kind: 'hope', sides: 12, value: hope }, { kind: 'fear', sides: 12, value: fear }, ...a.dice]
+        text: `🗡️ **${total}** (${hope}+${fear}${extraText}${signed(modifier)}${a.text}) ${status}`,
+        dice
     };
 }
 
@@ -247,6 +294,9 @@ export function roll(args, { system, gm, macros }) {
 
     const dh = parseDaggerheartArgs(args);
     if (dh) return gm ? daggerheartGm(dh) : daggerheartPlayer(dh);
+    // Zwei W12 sind in Daggerheart immer Hoffnung + Furcht, egal wie geschrieben, auch im GM-Modus
+    const duality = parseDualityFormula(args);
+    if (duality) return daggerheartPlayer(duality);
     return notation(args.join(''), macros);
 }
 
@@ -272,6 +322,7 @@ const HELP = {
         '`!roll` → Duality Dice (2d12 Hope + Fear); höherer Würfel bestimmt Hoffnung/Furcht, Pasch = kritisch',
         '`!roll +2`, `!roll -1` → Modifikator',
         '`!roll adv` / `!roll dis` → Vorteil (+d6) / Nachteil (−d6), kombinierbar: `!roll +2 adv`',
+        '`!roll 2d12+2` (auch `2w12`, `d12+d12`) → immer Hoffnung + Furcht, auch im GM-Modus; `+d6` / `-d6` = Vorteil / Nachteil',
         'GM-Modus: `!roll +3` = 1d20+3 (GM\'s Die), kritisch auf natürliche 20; adv/dis wie oben'
     ],
     swade: [

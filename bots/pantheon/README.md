@@ -22,6 +22,8 @@
 | `!help` / `!hilfe` | Hilfe zu allen Systemen, das des Raums zuerst |
 
 **Daggerheart:** `!roll` = Duality Dice (2d12 Hope + Fear), `+N`/`-N`, `adv`/`dis` (±d6).
+Zwei W12 in einer Formel sind immer Hope + Fear, egal wie geschrieben (`2d12+2`, `2w12`, `d12+d12`),
+auch im GM-Modus; `+d6`/`-d6` gelten dort als Vorteil/Nachteil, weitere Würfel werden addiert.
 Im GM-Modus 1d20 (GM's Die), kritisch auf natürliche 20.
 
 **Savage Worlds:** `!roll d8+2` = Eigenschaftswurf mit Wild Die (d6), beide explodieren, der höhere
