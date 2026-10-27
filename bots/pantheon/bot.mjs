@@ -248,7 +248,9 @@ const isCommand = (message) => message.actorId !== botUserId && message.body?.tr
 /**
  * Räumt den Raum nach der Session auf: löscht alle `!…`-Nachrichten (gültig oder nicht) und
  * alle Nachrichten des Bots, im Raum und in allen Threads. Was Menschen schreiben, bleibt
- * stehen – auch die Kopfnachricht des Würfel-Threads (z. B. ein Kartenbild) und Zeichnungen.
+ * stehen – auch die Kopfnachricht des Würfel-Threads (z. B. ein Kartenbild) und Zeichnungen –,
+ * außer in Threads, deren Kopfnachricht gelöscht ist oder jetzt gelöscht wird: dort gehen alle
+ * Antworten mit.
  * Die Bestätigung verschwindet nach einer Minute wieder.
  */
 async function purge(message) {
@@ -269,14 +271,19 @@ async function purge(message) {
         if (root.id !== diceRoot && !root.thread?.replyCount) continue;
         const replies = (await timelineMessages({ roomId, threadRootEventId: root.id }))
             .filter(m => m.id !== root.id);
-        for (const reply of replies) classify(reply);
+        // Ist die Kopfnachricht gelöscht (oder wird sie jetzt gelöscht), gehen alle Antworten mit
+        const orphaned = root.deletedAt || doomed.has(root.id);
+        for (const reply of replies) {
+            if (orphaned && !reply.deletedAt) doomed.set(reply.id, 'orphan');
+            else classify(reply);
+        }
         if (doomed.has(root.id)) roots.add(root.id);
     }
     if (!doomed.has(message.eventId)) doomed.set(message.eventId, 'command');
 
     // Antworten vor den Kopfnachrichten löschen, sonst bleibt der Thread als Rest stehen
     const order = [...doomed.keys()].sort((a, b) => roots.has(a) - roots.has(b));
-    const counts = { command: 0, bot: 0 };
+    const counts = { command: 0, bot: 0, orphan: 0 };
     let failed = 0;
     for (const eventId of order) {
         try {
@@ -291,6 +298,7 @@ async function purge(message) {
     console.log(`🧹 Purge in Raum ${roomId}: ${JSON.stringify(counts)}, ${failed} fehlgeschlagen`);
 
     const parts = [`${counts.command} Befehle`, `${counts.bot} Bot-Nachrichten`];
+    if (counts.orphan) parts.push(`${counts.orphan} Antworten in gelöschten Threads`);
     const text = `🧹 Aufgeräumt: ${parts.join(', ')} gelöscht.`
         + (failed ? ` ${failed} Nachrichten ließen sich nicht löschen (fehlt \`message.manage\`?).` : '');
     const note = await server.createMessage({ roomId }, text);

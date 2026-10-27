@@ -63,7 +63,9 @@ Mit `DELETE_COMMANDS=false` antwortet er wie früher als Antwort auf den Befehl.
 **Aufräumen nach der Session:** `!purge` (jeder im Raum) löscht im Raum und in allen Threads alle
 Nachrichten, die mit `!` anfangen (egal ob gültiger Befehl oder Tippfehler), und alle Nachrichten
 des Bots. Was Menschen schreiben, bleibt stehen – auch die Kopfnachricht des Würfel-Threads (etwa
-ein Kartenbild) und Zeichnungen; der Würfel-Thread bleibt gesetzt. Die Bestätigung („🧹 Aufgeräumt:
+ein Kartenbild) und Zeichnungen; der Würfel-Thread bleibt gesetzt. Ausnahme: Ist die Kopfnachricht
+eines Threads gelöscht (oder löscht `!purge` sie gerade), gehen alle Antworten darin mit, auch die von
+Menschen. Die Bestätigung („🧹 Aufgeräumt:
 …“) löscht sich nach einer Minute selbst. Braucht `message.manage`. Gelöschte Threads ohne Antworten
 blendet der gepatchte Client aus (Patch 0008).
 
