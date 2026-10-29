@@ -25,9 +25,13 @@ RUN mkdir -p cli/cmd/embedded \
  && cp LICENSES/AGPL-3.0-or-later.txt cli/cmd/embedded/LICENSE \
  && cp NOTICE cli/cmd/embedded/NOTICE
 WORKDIR /src/cli
-RUN CGO_ENABLED=0 go build -trimpath -tags nomsgpack -ldflags "-s -w" -o /chatto .
+# nodynamic: HEIC-Decoder (purego) sonst dynamisch gegen glibc gelinkt → läuft nicht auf Alpine.
+# Tags wie upstream in .github/workflows/release.yml halten.
+RUN CGO_ENABLED=0 go build -trimpath -tags nomsgpack,nodynamic -ldflags "-s -w" -o /chatto .
 
 FROM ghcr.io/chattocorp/chatto:${CHATTO_VERSION}
 LABEL org.opencontainers.image.source="https://github.com/lizzard77/chatto"
 LABEL org.opencontainers.image.description="Chatto mit Lizzard-Patches (iframe-Links, 3D-Würfel, Bild-Anmerkungen)"
 COPY --from=backend /chatto /chatto
+# Binary muss im Laufzeit-Image (Alpine/musl) starten – fehlender Loader fällt hier auf, nicht erst beim Deploy.
+RUN /chatto --version
