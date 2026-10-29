@@ -62,6 +62,13 @@ Versuch es zu reparieren, mit vertretbarem Aufwand:
 Zugang he1 (nur auf ausdrückliche Bitte von Phil nutzen): `ssh -i /opt/data/.ssh/id_ed25519 phil@he1.lizzard77.dev`,
 Compose unter `~/selfhosted-services/he1/chatto` (vorher `git pull --ff-only`).
 
+## Fallstrick: Build-Flags
+
+`docker/chatto.Dockerfile` baut das Go-Binary selbst und muss dieselben `-tags` wie upstream nutzen
+(`upstream/.github/workflows/release.yml`, `go build … -tags=…`). Ab beta.23 braucht es `nodynamic`, sonst linkt
+purego (HEIC) trotz `CGO_ENABLED=0` gegen glibc → auf Alpine `su-exec: /chatto: No such file or directory`.
+Bei jedem Update die Tags dort vergleichen. Das Dockerfile prüft mit `RUN /chatto --version` im finalen Stage.
+
 Im Cron-Lauf nie deployen (kein `docker compose` auf he1), nie force-pushen, nie auf `main` des Chatto-Repos committen.
 Ein neuer automatischer Versuch für dieselbe Version passiert erst, wenn die Datei
 `~/.local/state/chatto-update-check/attempted-<NEW>` gelöscht wird – erwähne das bei `❌`/`⚠️`.
