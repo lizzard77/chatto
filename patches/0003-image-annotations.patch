@@ -978,7 +978,7 @@ index fd6d315b6..b49c545ac 100644
    'chat',
    'common',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 46d7df671..19db40da6 100644
+index 75034147e..b2385430b 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
 @@ -1,5 +1,6 @@
@@ -988,7 +988,7 @@ index 46d7df671..19db40da6 100644
  import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
  import type StateCore from 'markdown-it/lib/rules_core/state_core.mjs';
  import type StateBlock from 'markdown-it/lib/rules_block/state_block.mjs';
-@@ -396,6 +397,27 @@ function renderChatLineBreak(tokens: Token[], idx: number): string {
+@@ -401,6 +402,27 @@ function renderChatLineBreak(tokens: Token[], idx: number): string {
    return lineAfterBreakIsWhitespaceOnly(tokens, idx) ? '' : '<br>\n';
  }
  
@@ -1016,7 +1016,7 @@ index 46d7df671..19db40da6 100644
  function renderParagraphOpen(tokens: Token[], idx: number): string {
    return tokens[idx].hidden ? '<span class="list-item-content">' : '<p>';
  }
-@@ -485,6 +507,7 @@ function initialize(): void {
+@@ -490,6 +512,7 @@ function initialize(): void {
  
    // Disable unwanted syntax - only keep what we explicitly want
    md.disable([...DISABLED_RULES]);
@@ -1357,10 +1357,10 @@ index 000000000..ef65dd4ad
 +	}
 +}
 diff --git a/cli/internal/core/messages.go b/cli/internal/core/messages.go
-index 18ef9ad06..d782a8191 100644
+index 857d84728..0a8f5e7aa 100644
 --- a/cli/internal/core/messages.go
 +++ b/cli/internal/core/messages.go
-@@ -917,7 +917,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
+@@ -919,7 +919,8 @@ func (c *ChattoCore) PostMessage(ctx context.Context, kind RoomKind, room_id, us
  	// Reply count / participants / lastReplyAt are derived live from
  	// ThreadProjection now, so no KV write — but we still need the
  	// root author for the auto-follow logic below.

@@ -22,7 +22,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  10 files changed, 130 insertions(+), 13 deletions(-)
 
 diff --git a/apps/frontend/messages/de-DE/settings.json b/apps/frontend/messages/de-DE/settings.json
-index 21e0efdd6..0fb62c063 100644
+index 490b8522a..a2d16a435 100644
 --- a/apps/frontend/messages/de-DE/settings.json
 +++ b/apps/frontend/messages/de-DE/settings.json
 @@ -216,6 +216,13 @@
@@ -60,7 +60,7 @@ index 21e0efdd6..0fb62c063 100644
        "contrast": {
          "label": "Kontrast",
 diff --git a/apps/frontend/messages/en-GB/settings.json b/apps/frontend/messages/en-GB/settings.json
-index e04bb06d3..490221e8e 100644
+index 5aef34d52..417353680 100644
 --- a/apps/frontend/messages/en-GB/settings.json
 +++ b/apps/frontend/messages/en-GB/settings.json
 @@ -216,6 +216,13 @@
@@ -98,7 +98,7 @@ index e04bb06d3..490221e8e 100644
        "contrast": {
          "label": "Contrast",
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index 7e982cb20..996c8bb96 100644
+index e02e7128a..9de26ca19 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
 @@ -514,6 +514,11 @@
@@ -187,7 +187,7 @@ index 7a51f4432..f2fac11db 100644
      const { root } = runThemeScript({
        preferences: { lightSurfaceTone: tone, darkSurfaceTone: 'plum' },
 diff --git a/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte b/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
-index eded5897c..9a76041e5 100644
+index bc2aca86f..a773fd147 100644
 --- a/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
 +++ b/apps/frontend/src/lib/components/settings/AccentColorPicker.svelte
 @@ -18,7 +18,7 @@ The owner applies and saves changes. Samples retain their own palette colours.

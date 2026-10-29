@@ -1409,18 +1409,18 @@ index 7995311c5..fd6d315b6 100644
    'error_page',
    'media',
 diff --git a/apps/frontend/src/lib/markdown.ts b/apps/frontend/src/lib/markdown.ts
-index 3bb5e351c..46d7df671 100644
+index 08d6e215c..75034147e 100644
 --- a/apps/frontend/src/lib/markdown.ts
 +++ b/apps/frontend/src/lib/markdown.ts
-@@ -8,6 +8,7 @@ import { configureMarkdownLinks } from './markdownLinks';
- import { renderedLinkTarget } from '$lib/navigation/renderedLink';
+@@ -9,6 +9,7 @@ import { renderedLinkTarget } from '$lib/navigation/renderedLink';
  import { collectMentionHandles, MENTIONS_ENV_KEY, mentionPlugin } from '$lib/markdownMentions';
  import { m } from '$lib/i18n/messages';
+ import { emojiPlugin } from './markdownEmoji';
 +import { diceSpecFromHref } from '$lib/dice/diceSpec';
  
  type CodeHighlightingModule = typeof import('$lib/codeHighlighting');
  
-@@ -419,6 +420,34 @@ function normalizeInlineNonBreakingSpaces(state: StateCore): void {
+@@ -424,6 +425,34 @@ function normalizeInlineNonBreakingSpaces(state: StateCore): void {
    }
  }
  
@@ -1455,10 +1455,10 @@ index 3bb5e351c..46d7df671 100644
  async function ensureFenceLanguagesLoaded(languages: string[]): Promise<void> {
    if (languages.length === 0) return;
  
-@@ -484,6 +513,8 @@ function initialize(): void {
-   // Recognize @mentions in the token tree after linkify, so URLs, links,
-   // code, and blockquotes keep their text. See `$lib/markdownMentions`.
-   md.use(mentionPlugin);
+@@ -506,6 +535,8 @@ function initialize(): void {
+     if (art === undefined) return defaultFence(tokens, index, options, env, self);
+     return `<pre class="markdown-code markdown-ansi" data-copy-source="${escapeAttribute(token.content)}"><code tabindex="0">${art}</code>${renderCodeActions('ansi')}</pre>\n`;
+   };
 +  md.core.ruler.push('chatto_dice', diceMarkers);
 +  md.renderer.rules.chatto_dice = renderDiceMarker;
    md.renderer.rules.softbreak = renderChatLineBreak;
@@ -1485,7 +1485,7 @@ index 066ad7deb..7be9b172a 100644
      if (!button) {
        const anchor = target.closest('a');
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index 58a842b7f..39c2e21e1 100644
+index fe20bc41b..71f39cba3 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 @@ -67,6 +67,7 @@ thread IDs can change while the pane stays mounted.
@@ -1496,7 +1496,7 @@ index 58a842b7f..39c2e21e1 100644
  
    let {
      roomId,
-@@ -352,7 +353,21 @@ thread IDs can change while the pane stays mounted.
+@@ -360,7 +361,21 @@ thread IDs can change while the pane stays mounted.
      if (projectionEvent.resource?.case === 'notifications') readRootReactions();
      const semantic = projectionEvent.event?.event;
      if (semantic?.case !== 'messagePosted' || semantic.value.roomId !== roomId) return;

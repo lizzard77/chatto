@@ -16,7 +16,7 @@ become a non-clickable "unknown room" chip. Frontend only.
  .../composer/MessageComposer.svelte           |  16 ++
  .../composer/RoomAutocomplete.svelte          |  61 ++++++
  .../components/composer/TipTapEditor.svelte   |  14 ++
- .../composer/autocomplete.svelte.ts           |  73 ++++++-
+ .../composer/autocomplete.svelte.ts           |  80 +++++++-
  .../lib/components/composer/editorTypes.ts    |   5 +
  .../composer/linkPreviews.svelte.ts           |  16 +-
  .../composer/messageComposerState.svelte.ts   |  17 +-
@@ -24,7 +24,7 @@ become a non-clickable "unknown room" chip. Frontend only.
  apps/frontend/src/lib/i18n/catalogSections.js |   1 +
  .../frontend/src/lib/roomLinks.svelte.spec.ts | 169 ++++++++++++++++
  apps/frontend/src/lib/roomLinks.ts            | 188 ++++++++++++++++++
- 15 files changed, 706 insertions(+), 9 deletions(-)
+ 15 files changed, 713 insertions(+), 9 deletions(-)
  create mode 100644 apps/frontend/messages/de-DE/room_links.json
  create mode 100644 apps/frontend/messages/en-GB/room_links.json
  create mode 100644 apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
@@ -59,10 +59,10 @@ index 000000000..fc911c939
 +  }
 +}
 diff --git a/apps/frontend/src/app.css b/apps/frontend/src/app.css
-index 996c8bb96..780de8037 100644
+index 9de26ca19..597434fcb 100644
 --- a/apps/frontend/src/app.css
 +++ b/apps/frontend/src/app.css
-@@ -1797,6 +1797,19 @@
+@@ -1806,6 +1806,19 @@
    @apply bg-attention/20 text-text;
  }
  
@@ -146,10 +146,10 @@ index 6cc038d06..9c96023b8 100644
    {:then html}
      <MarkdownHtml {html} />
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index 0bce99309..cad796f01 100644
+index 7f972200e..aea8ef54b 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-@@ -22,6 +22,8 @@
+@@ -23,6 +23,8 @@
    import type { Component } from 'svelte';
    import EmojiAutocomplete from './EmojiAutocomplete.svelte';
    import MentionAutocomplete from './MentionAutocomplete.svelte';
@@ -158,9 +158,9 @@ index 0bce99309..cad796f01 100644
    import ComposerLinkPreview from './ComposerLinkPreview.svelte';
    import ComposerAttachmentPreviews from './ComposerAttachmentPreviews.svelte';
    import ComposerFormattingToolbar from './ComposerFormattingToolbar.svelte';
-@@ -170,6 +172,11 @@
-     context: composerContext,
+@@ -172,6 +174,11 @@
      getMembers: () => membersStore().members,
+     isUserDeactivated: (userId) => stores.projection.users.isDeactivated(userId),
      getMentionPriorityUserIds: () => mentionPriorityUserIds,
 +    getServerId: () => serverScope.serverId,
 +    getRoomLinkSource: () => {
@@ -170,7 +170,7 @@ index 0bce99309..cad796f01 100644
      get membersStore() {
        return membersStore();
      },
-@@ -323,6 +330,15 @@
+@@ -326,6 +333,15 @@
              onClose={() => composer.autocomplete.closeMention()}
            />
          {/if}
@@ -185,7 +185,7 @@ index 0bce99309..cad796f01 100644
 +        {/if}
  
          <CompactActionButton
-           wrapperClass={[
+           touchFriendly
 diff --git a/apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte b/apps/frontend/src/lib/components/composer/RoomAutocomplete.svelte
 new file mode 100644
 index 000000000..a719ca5b2
@@ -254,10 +254,10 @@ index 000000000..a719ca5b2
 +  {/snippet}
 +</AutocompletePopup>
 diff --git a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-index 3cb105b85..798b029d0 100644
+index a57217318..08f0e21bb 100644
 --- a/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
 +++ b/apps/frontend/src/lib/components/composer/TipTapEditor.svelte
-@@ -397,6 +397,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
+@@ -399,6 +399,20 @@ and exposes a typed API for text manipulation (mentions, emoji, drafts).
          tick().then(syncControls);
        },
  
@@ -279,18 +279,18 @@ index 3cb105b85..798b029d0 100644
          if (e.isDestroyed || !text) return;
          e.chain().focus().insertContent(text).run();
 diff --git a/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts b/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
-index 8eda4f50a..56638c52d 100644
+index 7401f3f42..9489ff81a 100644
 --- a/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/autocomplete.svelte.ts
-@@ -2,6 +2,7 @@ import type { RoomMember } from '$lib/state/room';
- import { searchEmojis } from '$lib/emoji';
+@@ -3,6 +3,7 @@ import { searchEmojis } from '$lib/emoji';
+ import { emojiShortcodeQuery } from '@chatto/client/messaging/emojiShortcodes';
  import type { ComposerEditorApi } from './editorTypes';
  import { rankMentionCandidates } from './mentionRanking';
 +import { buildRoomLinkURL, roomLinkLabel, type RoomLinkRoom } from '$lib/roomLinks';
  
  export type MentionRole = {
    name: string;
-@@ -27,24 +28,40 @@ export type MentionAutocompleteState = {
+@@ -28,12 +29,25 @@ export type MentionAutocompleteState = {
    triggerStart: number;
  };
  
@@ -316,15 +316,23 @@ index 8eda4f50a..56638c52d 100644
  
    constructor(
      private readonly getEditorApi: () => ComposerEditorApi | null,
-     private readonly getMembers: () => RoomMember[],
+@@ -41,12 +55,22 @@ export class AutocompleteState {
      private readonly getRoles: () => MentionRole[] = () => [],
      /** Users that rank first among matches, such as thread participants. */
--    private readonly getPrioritizedUserIds?: () => ReadonlySet<string> | undefined
-+    private readonly getPrioritizedUserIds?: () => ReadonlySet<string> | undefined,
-+    /** Rooms for `#` autocomplete; null turns it off. */
-+    private readonly getRoomLinkSource: () => RoomLinkSource | null = () => null
+     private readonly getPrioritizedUserIds?: () => ReadonlySet<string> | undefined,
+-    private readonly options: { openOnAt?: boolean; emojis?: boolean } = {}
++    private readonly options: {
++      openOnAt?: boolean;
++      emojis?: boolean;
++      /** Rooms for `#` autocomplete; null turns it off. */
++      getRoomLinkSource?: () => RoomLinkSource | null;
++    } = {}
    ) {}
  
++  private getRoomLinkSource(): RoomLinkSource | null {
++    return this.options.getRoomLinkSource?.() ?? null;
++  }
++
    reset(): void {
      this.emoji = null;
      this.mention = null;
@@ -332,7 +340,7 @@ index 8eda4f50a..56638c52d 100644
      this.tabCompletion = null;
    }
  
-@@ -55,6 +72,34 @@ export class AutocompleteState {
+@@ -57,6 +81,34 @@ export class AutocompleteState {
    update(): void {
      this.updateEmoji();
      this.updateMention();
@@ -367,7 +375,7 @@ index 8eda4f50a..56638c52d 100644
    }
  
    closeEmoji(): void {
-@@ -173,6 +218,32 @@ export class AutocompleteState {
+@@ -176,6 +228,32 @@ export class AutocompleteState {
      }
    }
  
@@ -401,10 +409,10 @@ index 8eda4f50a..56638c52d 100644
      return rankMentionCandidates(
        partial,
 diff --git a/apps/frontend/src/lib/components/composer/editorTypes.ts b/apps/frontend/src/lib/components/composer/editorTypes.ts
-index 4a6487dd5..ccd364c29 100644
+index aa5867cf7..1e7ea399a 100644
 --- a/apps/frontend/src/lib/components/composer/editorTypes.ts
 +++ b/apps/frontend/src/lib/components/composer/editorTypes.ts
-@@ -47,6 +47,11 @@ export type ComposerEditorApi = {
+@@ -48,6 +48,11 @@ export type ComposerEditorApi = {
     * cursor is known.
     */
    replaceTextBeforeCursor: (charCount: number, replacement: string) => void;
@@ -458,7 +466,7 @@ index fc106556f..3714a305e 100644
  
        for (const url of urls) {
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index dc4a662c9..2d604f0fb 100644
+index bd44002e7..813ed2d15 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 @@ -20,7 +20,7 @@ import { useDebounce } from '$lib/hooks/useDebounce.svelte';
@@ -470,9 +478,9 @@ index dc4a662c9..2d604f0fb 100644
  import { DraftState, draftKey } from './draft.svelte';
  import {
    emptyComposerIndentState,
-@@ -112,6 +112,10 @@ type MessageComposerDependencies = {
-   context: ComposerContext;
-   getMembers: () => RoomMember[];
+@@ -115,6 +115,10 @@ type MessageComposerDependencies = {
+   /** Read current account access state when rendering or selecting a mention. */
+   isUserDeactivated?: (userId: string) => boolean;
    getMentionPriorityUserIds: () => ReadonlySet<string> | undefined;
 +  /** Rooms for `#` autocomplete; see `$lib/roomLinks`. */
 +  getRoomLinkSource?: () => RoomLinkSource | null;
@@ -481,7 +489,7 @@ index dc4a662c9..2d604f0fb 100644
    membersStore: RoomMembersStore;
    mentionRolesStore: MentionRolesStore;
    serverInfo: ServerInfoState;
-@@ -174,12 +178,16 @@ export class MessageComposerState {
+@@ -177,12 +181,16 @@ export class MessageComposerState {
        dependencies.context.focus = undefined;
      });
      this.attachments = new AttachmentsState(() => dependencies.serverInfo);
@@ -496,11 +504,11 @@ index dc4a662c9..2d604f0fb 100644
        () => this.mentionRoles,
 -      () => this.mentionPriorityUserIds
 +      () => this.mentionPriorityUserIds,
-+      () => dependencies.getRoomLinkSource?.() ?? null
++      { getRoomLinkSource: () => dependencies.getRoomLinkSource?.() ?? null }
      );
      this.submission = new ComposerSubmissionState({
        getAPI: dependencies.getMessageAPI,
-@@ -398,6 +406,9 @@ export class MessageComposerState {
+@@ -406,6 +414,9 @@ export class MessageComposerState {
      if (this.autocomplete.mention?.query && this.autocomplete.mentionRef?.handleKeyDown(event)) {
        return true;
      }
@@ -512,7 +520,7 @@ index dc4a662c9..2d604f0fb 100644
      if (event.key !== 'Tab') this.autocomplete.resetTabCompletion();
 diff --git a/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts b/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts
 new file mode 100644
-index 000000000..c3d353690
+index 000000000..c298b2460
 --- /dev/null
 +++ b/apps/frontend/src/lib/components/composer/roomAutocomplete.svelte.spec.ts
 @@ -0,0 +1,99 @@
@@ -568,7 +576,7 @@ index 000000000..c3d353690
 +    () => [],
 +    () => [],
 +    undefined,
-+    () => roomSource
++    { getRoomLinkSource: () => roomSource }
 +  );
 +}
 +

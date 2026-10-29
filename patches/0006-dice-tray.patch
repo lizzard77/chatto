@@ -40,10 +40,10 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
  create mode 100644 apps/frontend/src/lib/diceTray/diceTray.svelte.ts
 
 diff --git a/apps/frontend/messages/de-DE/composer.json b/apps/frontend/messages/de-DE/composer.json
-index 58a2412dc..0bdf74d93 100644
+index bd0527d51..7397c2c17 100644
 --- a/apps/frontend/messages/de-DE/composer.json
 +++ b/apps/frontend/messages/de-DE/composer.json
-@@ -76,6 +76,42 @@
+@@ -77,6 +77,42 @@
        "all_room_members": "Alle Raummitglieder",
        "members_here": "Gerade anwesende Mitglieder",
        "role": "Rolle"
@@ -87,10 +87,10 @@ index 58a2412dc..0bdf74d93 100644
    }
  }
 diff --git a/apps/frontend/messages/en-GB/composer.json b/apps/frontend/messages/en-GB/composer.json
-index 20a4c633d..288cad6e6 100644
+index f5b5d1fae..c436a24ba 100644
 --- a/apps/frontend/messages/en-GB/composer.json
 +++ b/apps/frontend/messages/en-GB/composer.json
-@@ -76,6 +76,42 @@
+@@ -77,6 +77,42 @@
        "all_room_members": "All room members",
        "members_here": "Members currently here",
        "role": "Role"
@@ -172,7 +172,7 @@ index 000000000..f9293a109
 +  ></span>
 +</CompactActionButton>
 diff --git a/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte b/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
-index c5ae3ef79..43a8922b0 100644
+index 43472198b..fca1b9805 100644
 --- a/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
 +++ b/apps/frontend/src/lib/components/composer/ComposerToolbar.svelte
 @@ -8,6 +8,7 @@ Formatting commands live in `ComposerFormattingToolbar`.
@@ -203,7 +203,7 @@ index c5ae3ef79..43a8922b0 100644
  </script>
  
 @@ -51,7 +55,8 @@ Formatting commands live in `ComposerFormattingToolbar`.
-   class="flex min-w-0 flex-wrap items-center justify-end gap-1 @min-[560px]/composer:shrink-0 @min-[560px]/composer:flex-nowrap @min-[560px]/composer:desktop-presentation:mb-1"
+   class="flex min-w-0 flex-wrap items-center justify-end gap-1 @min-[560px]/composer:shrink-0 @min-[560px]/composer:flex-nowrap @min-[560px]/composer:compact-input:mb-1"
    data-testid="composer-action-toolbar"
  >
 -  <div class="flex items-center gap-0.5">
@@ -211,7 +211,7 @@ index c5ae3ef79..43a8922b0 100644
 +  <div class="flex flex-wrap items-center justify-end gap-0.5">
      {#if !isEditing && canAttach}
        <CompactActionButton
-         wrapperClass="mobile-presentation:pill-button-group-touch"
+         touchFriendly
 @@ -65,6 +70,10 @@ Formatting commands live in `ComposerFormattingToolbar`.
        </CompactActionButton>
      {/if}
@@ -224,11 +224,11 @@ index c5ae3ef79..43a8922b0 100644
    </div>
  
 diff --git a/apps/frontend/src/lib/components/composer/MessageComposer.svelte b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-index cad796f01..7223303bc 100644
+index aea8ef54b..240cceb1c 100644
 --- a/apps/frontend/src/lib/components/composer/MessageComposer.svelte
 +++ b/apps/frontend/src/lib/components/composer/MessageComposer.svelte
-@@ -6,9 +6,12 @@
-   import ComposerStatusRow from './ComposerStatusRow.svelte';
+@@ -7,9 +7,12 @@
+   import ComposerShortcutHints from './ComposerShortcutHints.svelte';
    import SlowModeBadge from './SlowModeBadge.svelte';
    import { createMessageAPI } from '@chatto/client/api/messages';
 +  import { diceTray } from '$lib/diceTray/diceTray.svelte';
@@ -240,7 +240,7 @@ index cad796f01..7223303bc 100644
    import { useServerScope } from '$lib/state/server/scope.svelte';
    import { ConfirmDialog, Dialog, FormDialog, CompactActionButton } from '$lib/ui';
    import { Button, TextArea } from '$lib/ui/form';
-@@ -136,6 +139,7 @@
+@@ -137,6 +140,7 @@
    const composerContext = getComposerContext();
    const replyState = $derived(composerContext.replyState);
    const membersStore = useRoomMembersStore();
@@ -248,7 +248,7 @@ index cad796f01..7223303bc 100644
    const composer = new MessageComposerState({
      draftReplies: serverUi(stores).draftReplies,
      getRoomId: () => roomId,
-@@ -184,7 +188,8 @@
+@@ -186,7 +190,8 @@
      serverInfo,
      roomUnreadStore,
      getMessageAPI: () => serverScope.connection.getAPI(createMessageAPI),
@@ -258,7 +258,7 @@ index cad796f01..7223303bc 100644
    });
  
    let expandedDraft = $state(false);
-@@ -293,6 +298,23 @@
+@@ -296,6 +301,23 @@
        class="relative chat-input-surface min-w-0 px-2.5 py-1.5"
        class:opacity-50={composer.inputDisabled}
      >
@@ -282,7 +282,7 @@ index cad796f01..7223303bc 100644
        <ComposerModeIndicators
          inReplyTo={replyState.messageEventId ?? undefined}
          replyDisplayName={replyState.actorDisplayName || undefined}
-@@ -413,6 +435,7 @@
+@@ -414,6 +436,7 @@
            onToggleAlsoSendToChannel={() =>
              (composer.alsoSendToChannel = !composer.alsoSendToChannel)}
            onsubmit={() => composer.submit()}
@@ -291,10 +291,10 @@ index cad796f01..7223303bc 100644
        </div>
      </div>
 diff --git a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-index 2d604f0fb..20ca49414 100644
+index 813ed2d15..3712cf38f 100644
 --- a/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
 +++ b/apps/frontend/src/lib/components/composer/messageComposerState.svelte.ts
-@@ -122,6 +122,8 @@ type MessageComposerDependencies = {
+@@ -125,6 +125,8 @@ type MessageComposerDependencies = {
    roomUnreadStore: RoomUnreadStore;
    getMessageAPI: () => ReturnType<typeof createMessageAPI>;
    getLinkPreviewAPI: () => ReturnType<typeof createLinkPreviewAPI>;
@@ -303,7 +303,7 @@ index 2d604f0fb..20ca49414 100644
  };
  
  export function bodyForSend(text: string): string {
-@@ -424,6 +426,28 @@ export class MessageComposerState {
+@@ -432,6 +434,28 @@ export class MessageComposerState {
      this.autocomplete.update();
    }
  
@@ -332,7 +332,7 @@ index 2d604f0fb..20ca49414 100644
    handleEditorReady(api: ComposerEditorApi): void {
      this.editorApi = api;
      if (this.message) api.setContent(this.message);
-@@ -638,6 +662,7 @@ export class MessageComposerState {
+@@ -646,6 +670,7 @@ export class MessageComposerState {
      const bodyToSend = bodyForSend(this.message);
      const filesToSend = this.hasSendableAttachments ? [...this.attachments.selectedFiles] : null;
      if (!hasVisibleContent(bodyToSend) && !filesToSend) return;
@@ -1552,7 +1552,7 @@ index 117d6ec97..60da68894 100644
    'room.thread.title': ['de-DE'],
    'settings.account.sso.title': ['de-DE'],
 diff --git a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
-index 39c2e21e1..2de1d7aab 100644
+index 71f39cba3..5ba5a72ce 100644
 --- a/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 +++ b/apps/frontend/src/routes/chat/[serverId]/[roomId]/ConversationPane.svelte
 @@ -34,6 +34,7 @@ thread IDs can change while the pane stays mounted.
@@ -1563,7 +1563,7 @@ index 39c2e21e1..2de1d7aab 100644
    import { onDestroy, untrack, type Snippet } from 'svelte';
    import { SvelteSet } from 'svelte/reactivity';
    import type { ClassValue, HTMLAttributes } from 'svelte/elements';
-@@ -473,6 +474,9 @@ thread IDs can change while the pane stays mounted.
+@@ -487,6 +488,9 @@ thread IDs can change while the pane stays mounted.
      </EmptyState>
    {/if}
  
@@ -1574,5 +1574,5 @@ index 39c2e21e1..2de1d7aab 100644
      {...composer}
      {roomId}
 -- 
-2.56.0
+2.47.3
 
