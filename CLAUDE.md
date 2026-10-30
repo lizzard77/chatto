@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-The `fork` branch of `lizzard77/chatto` is a **patch overlay** on [Chatto](https://github.com/chattocorp/chatto), not a fork of its source. It holds only what is needed to build the modified Chatto (AGPL-3.0 corresponding source): `patches/*.patch` (`git am` format), the image build and the scripts to apply, build and export the patches. `CHATTO_VERSION` pins the upstream tag (`v<version>`) the patches apply to.
+`lizzard77/chatto-ttrpg-patches` is a **patch overlay** on [Chatto](https://github.com/chattocorp/chatto), not a fork of its source. It holds only what is needed to build the modified Chatto (AGPL-3.0 corresponding source): `patches/*.patch` (`git am` format), the image build and the scripts to apply, build and export the patches. `CHATTO_VERSION` pins the upstream tag (`v<version>`) the patches apply to.
 
 Everything else (bots, dev server, update automation, deployment, agent skills) lives in a separate private repository (Phil: `selfhosted-services/chatto/`, see its `CLAUDE.md`). Keep this repo minimal: **this repo is public** — no bots, tooling, deployment details, secrets or private IDs here.
 
@@ -56,7 +56,7 @@ Fork features communicate through **marker links in message bodies** rather than
 
 ## CI / image
 
-`.github/workflows/images.yml` runs on pushes to `fork` touching `CHATTO_VERSION`, `patches/`, `docker/` (or `gh workflow run images.yml`). It builds `docker/chatto.Dockerfile` (clone upstream tag → `git am` patches → build frontend + Go binary → copy the binary over the official `ghcr.io/chattocorp/chatto:<version>` image). Tags: `ghcr.io/lizzard77/chatto:<version>` and `:<version>-<sha>`. The image build runs no upstream tests.
+`.github/workflows/images.yml` runs on pushes to `main` touching `CHATTO_VERSION`, `patches/`, `docker/` (or `gh workflow run images.yml`). It builds `docker/chatto.Dockerfile` (clone upstream tag → `git am` patches → build frontend + Go binary → copy the binary over the official `ghcr.io/chattocorp/chatto:<version>` image). Tags: `ghcr.io/lizzard77/chatto:<version>` and `:<version>-<sha>`. The image build runs no upstream tests.
 
 The Dockerfile builds the Go binary itself, so its `-tags` must match upstream's `.github/workflows/release.yml` (currently `nomsgpack,nodynamic`; without `nodynamic` the binary links against glibc and fails on the Alpine base with `su-exec: /chatto: No such file or directory`). The final stage runs `/chatto --version` as a smoke test.
 
@@ -64,4 +64,4 @@ The Dockerfile builds the Go binary itself, so its `-tags` must match upstream's
 
 - Talk to the user in German. Comments in scripts are German; README and this file are English.
 - Commit as `Phil Reif <pr@sambal.net>`.
-- Publishing a new version = commit directly on `fork` (the repo's default branch) and `git push origin fork`; the push triggers the image build. No feature branches or PRs. Do not commit to `main` (mirror of upstream, if it still exists).
+- Publishing a new version = commit directly on `main` and `git push origin main`; the push triggers the image build. No feature branches or PRs.

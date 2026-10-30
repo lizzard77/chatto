@@ -30,7 +30,7 @@ WORKDIR /src/cli
 RUN CGO_ENABLED=0 go build -trimpath -tags nomsgpack,nodynamic -ldflags "-s -w" -o /chatto .
 
 FROM ghcr.io/chattocorp/chatto:${CHATTO_VERSION}
-LABEL org.opencontainers.image.source="https://github.com/lizzard77/chatto"
+LABEL org.opencontainers.image.source="https://github.com/lizzard77/chatto-ttrpg-patches"
 LABEL org.opencontainers.image.description="Chatto mit Lizzard-Patches (iframe-Links, 3D-Würfel, Bild-Anmerkungen)"
 COPY --from=backend /chatto /chatto
 # Binary muss im Laufzeit-Image (Alpine/musl) starten – fehlender Loader fällt hier auf, nicht erst beim Deploy.

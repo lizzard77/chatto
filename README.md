@@ -1,10 +1,10 @@
-# Chatto – Lizzard fork
+# Chatto TTRPG patches
 
 Modified [Chatto](https://github.com/chattocorp/chatto) (AGPL-3.0): patches on top of the upstream code
 and the GitHub Action that builds the container image. This repository is the complete corresponding
 source of the modified version.
 
-This branch (`fork`, the default branch of `lizzard77/chatto`) contains **no** upstream code. Upstream
+This repository (`lizzard77/chatto-ttrpg-patches`, branch `main`) contains **no** upstream code. Upstream
 is checked out locally as a git worktree in `upstream/` (gitignored); `scripts/upstream.sh` brings it
 to the version in `CHATTO_VERSION` with all patches applied as commits.
 
@@ -33,7 +33,7 @@ pnpm is fetched with `npx`. To run the result, follow upstream's docs with the b
 
 ## Image
 
-Every push to `fork` that changes `CHATTO_VERSION`, `patches/` or `docker/` runs
+Every push to `main` that changes `CHATTO_VERSION`, `patches/` or `docker/` runs
 `.github/workflows/images.yml` (also manually: `gh workflow run images.yml`):
 `ghcr.io/lizzard77/chatto:<CHATTO_VERSION>` (latest build of that version) and `…:<version>-<sha>`.
 Use it in place of the official image, e.g. `image: ghcr.io/lizzard77/chatto:0.5.0-beta.23` in Docker
