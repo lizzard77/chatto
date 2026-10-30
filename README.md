@@ -1,7 +1,8 @@
 # Chatto – Lizzard fork
 
-Extensions for [Chatto](https://github.com/chattocorp/chatto): patches on top of the upstream code,
-bots, a local development setup and the GitHub Action that builds the container images.
+Modified [Chatto](https://github.com/chattocorp/chatto) (AGPL-3.0): patches on top of the upstream code
+and the GitHub Action that builds the container image. This repository is the complete corresponding
+source of the modified version.
 
 This branch (`fork`, the default branch of `lizzard77/chatto`) contains **no** upstream code. Upstream
 is checked out locally as a git worktree in `upstream/` (gitignored); `scripts/upstream.sh` brings it
@@ -12,22 +13,14 @@ to the version in `CHATTO_VERSION` with all patches applied as commits.
 | `CHATTO_VERSION` | Upstream version the patches apply to |
 | `patches/` | Changes to the upstream code (`git am` format), see below |
 | `docker/chatto.Dockerfile` | Builds the upstream tag plus patches and puts the binary on top of the official image |
-| `.github/workflows/images.yml` | Builds and pushes `ghcr.io/lizzard77/chatto` and `ghcr.io/lizzard77/chatto-pantheon` |
-| `bots/pantheon/` | Dice bot for Daggerheart and Savage Worlds (container image from GHCR) |
-| `bots/erato/` | Music bot that streams a local audio source into a voice call |
-| `tools/update-check/` | Optional daily job: new upstream release → rebase patches → build image |
-| `scripts/` | Check out upstream, build, run a dev server, export patches |
+| `.github/workflows/images.yml` | Builds and pushes `ghcr.io/lizzard77/chatto` |
+| `scripts/` | Check out upstream, build, export patches |
 
 ## Development
 
 ```sh
 scripts/upstream.sh            # upstream/ = tag v$(cat CHATTO_VERSION) + patches as commits
-scripts/dev.sh                 # build and start a local server on http://localhost:4400, with LiveKit for calls
-scripts/dev.sh --reset         # same with fresh data (test users alice/bob from upstream/cli/chatto.toml)
-scripts/dev.sh --no-build      # start only
-scripts/dev-bots.sh pantheon   # set up the dev bots if needed and run Pantheon (or: erato)
-scripts/dev-chat.mjs post general '!r 2d6'   # post/edit/list/dm as alice (AS=bob) to test the bots
-scripts/build.sh --check       # build only, plus svelte-check
+scripts/build.sh --check       # build (→ upstream/cli/bin/chatto), plus svelte-check
 scripts/export-patches.sh      # write the commits in upstream/ back to patches/
 ```
 
@@ -36,48 +29,18 @@ Workflow: change and commit in `upstream/` (one commit per patch; fix an existin
 `scripts/export-patches.sh`, commit here and push.
 
 Requirements: git, Go (version in `upstream/mise.toml`), Node 24 (used through `fnm` when installed);
-pnpm is fetched with `npx`; ffmpeg for Erato. The dev server listens on `CHATTO_DEV_PORT` (default 4400;
-NATS +4, LiveKit +5, LiveKit UDP +6). Everything local lives in `.dev/` (gitignored, survives
-`--reset` except for the data and bot keys):
+pnpm is fetched with `npx`. To run the result, follow upstream's docs with the built binary.
 
-| Path | |
-|---|---|
-| `.dev/data/` | server data (NATS, search index) |
-| `.dev/bin/livekit-server` | built with `go install` on the first start, version from `upstream/mise.toml` |
-| `.dev/livekit.yaml` | LiveKit config, rewritten by `dev.sh` on every start (key/secret also passed to Chatto) |
-| `.dev/bots.env` | API keys of the dev bots `pantheon` and `erato` |
-| `.dev/tone.ogg` | test tone Erato streams by default |
+## Image
 
-`scripts/dev-bots.sh` logs in as alice, creates the bots `pantheon` and `erato`, grants them the
-permissions they need server-wide, joins them to `#general` and writes `.dev/bots.env`; it redoes
-this whenever the stored keys stop working (fresh server). `scripts/dev-bots.sh erato [<file>]`
-streams the test tone into the call of `#general`, with DM control for alice, ignoring the extra
-sources from `bots/erato/.env`.
-
-## Images and deployment
-
-Every push to `fork` that changes `CHATTO_VERSION`, `patches/`, `docker/` or `bots/pantheon/` runs
+Every push to `fork` that changes `CHATTO_VERSION`, `patches/` or `docker/` runs
 `.github/workflows/images.yml` (also manually: `gh workflow run images.yml`):
-
-- `ghcr.io/lizzard77/chatto:<CHATTO_VERSION>` (latest build of that version) and `…:<version>-<sha>`
-- `ghcr.io/lizzard77/chatto-pantheon:latest` and `…:<sha>`
-
-Use them in place of the official image, for example in Docker Compose:
-
-```yaml
-services:
-  chatto:
-    image: ghcr.io/lizzard77/chatto:0.5.0-beta.12
-  pantheon:
-    image: ghcr.io/lizzard77/chatto-pantheon:latest
-```
-
-Update with `docker compose pull && docker compose up -d`. Take a backup before changing versions:
+`ghcr.io/lizzard77/chatto:<CHATTO_VERSION>` (latest build of that version) and `…:<version>-<sha>`.
+Use it in place of the official image, e.g. `image: ghcr.io/lizzard77/chatto:0.5.0-beta.23` in Docker
+Compose. Take a backup before changing versions:
 `docker exec chatto /chatto backup --include-keys -o /backups/<name>.tar.gz`.
 
 ## Updating to a new Chatto release
-
-`tools/update-check/` can do this automatically. By hand:
 
 ```sh
 scripts/upstream.sh 0.5.0-beta.13      # apply the patches with --3way to the new tag; resolve conflicts in upstream/
@@ -86,8 +49,8 @@ scripts/export-patches.sh 0.5.0-beta.13
 echo 0.5.0-beta.13 > CHATTO_VERSION    # commit + push → the action builds the image
 ```
 
-Then point your deployment at the new image tag. If the realtime protocol changed, bump
-`@chatto/client` in `bots/pantheon` and `bots/erato`.
+Then point your deployment at the new image tag. If the realtime protocol changed, bots built on
+`@chatto/client` may need a newer client version.
 
 ## Patches
 
@@ -123,8 +86,8 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   only people who follow it on purpose (`cli/internal/core/image_annotations.go` plus one line in
   `messages.go`). Existing follows stay; unfollow with the bell in the thread.
 
-- `0004-nachtgold-scheme.patch` – the **Nachtgold** colour scheme of the Rollenspiel server
-  (`branding/`): a new surface tone **Navy** (hue 250, chroma 0.075), a new accent colour **Gold**
+- `0004-nachtgold-scheme.patch` – the **Nachtgold** colour scheme of the Rollenspiel server:
+  a new surface tone **Navy** (hue 250, chroma 0.075), a new accent colour **Gold**
   (`oklch(50% 0.105 78)` / `oklch(83% 0.14 85)`), and a one-click preset under **Settings →
   Appearance → Theme customisation → Colour scheme** that sets the dark theme, the gold accent and the
   navy tone for both themes. The choice stays per browser like every appearance setting; Chatto has
@@ -155,7 +118,7 @@ Each patch applies on its own and in any order (the image build uses plain `git 
   room (device-local, shown by default). While it is hidden, a small card above the room composer
   shows the latest result; a viewer whose own latest roll was a GM roll (`;gm=1`) sees the latest
   result per player instead. Results come from live events, thread replies included, and from the
-  known dice thread on open; Pantheon sets up the thread with `!dice` in a thread and moves all
+  known dice thread on open; the dice bot sets up the thread with `!dice` in a thread and moves all
   rolls of the room there. Code in `apps/frontend/src/lib/diceTray/` and
   `lib/components/composer/ComposerDiceTray.svelte`. Frontend only, independent of 0002.
 

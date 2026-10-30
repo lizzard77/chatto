@@ -1,8 +1,7 @@
 # Upstream-Quellcode mit angewendeten Patches (git worktree, siehe scripts/upstream.sh)
 /upstream/
-# Lokaler Dev-Server (scripts/dev.sh)
+# Zustand des lokalen Dev-Servers (externes Dev-Skript)
 /.dev/
 node_modules/
 .env
-bots/pantheon/storage/
 /.turbo/
